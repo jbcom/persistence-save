@@ -1,6 +1,6 @@
 {
   "name": "@arcade-cabinet/persistence-save",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generic save-game persistence facade over @capacitor-community/sqlite (jeep-sqlite/sql.js on web, native SQLite + SQLCipher on device) with a chained snapshot-migration walker, corrupt-save isolation, an autosave debounce/throttle scheduler, and a Capacitor Preferences KV bridge — extracted from Aethelgard-Chronicles-of-Strata's persistence layer.",
   "type": "module",
   "license": "MIT",
@@ -18,13 +18,15 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
     },
+    "./assets/sql-wasm.wasm": "./dist/assets/sql-wasm.wasm",
     "./package.json": "./package.json"
   },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
   "scripts": {
-    "build": "pnpm run build:esm && pnpm run build:cjs && pnpm run build:types && pnpm run build:fixup",
+    "build": "pnpm run build:esm && pnpm run build:cjs && pnpm run build:types && pnpm run build:fixup && pnpm run build:assets",
+    "build:assets": "node scripts/copy-wasm.mjs",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:types": "tsc -p tsconfig.types.json",
@@ -43,6 +45,9 @@
     "jeep-sqlite": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "sql.js": "1.11.0"
   },
   "devDependencies": {
     "@capacitor-community/sqlite": "8.1.0",
