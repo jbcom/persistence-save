@@ -43,7 +43,7 @@
     "@capacitor/preferences": ">=6.0.0"
   },
   "dependencies": {
-    "@arcade-cabinet/jeep-sqlite": "2.8.0-arcade.1",
+    "@arcade-cabinet/jeep-sqlite": "2.8.0-arcade.2",
     "sql.js": "1.14.1"
   },
   "devDependencies": {
