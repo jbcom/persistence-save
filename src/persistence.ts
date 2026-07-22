@@ -143,8 +143,9 @@ export interface PersistenceConfig<TState, TSnapshot extends VersionedSnapshot> 
   maxSnapshotBytes?: number;
   /**
    * Directory the jeep-sqlite WASM assets are served from on web.
-   * Default `/assets` (Vite: copy `node_modules/sql.js/dist/sql-wasm.wasm`
-   * into `public/assets/`).
+   * Default `/assets` (copy both package exports `assets/sql-wasm.wasm` and
+   * `assets/sql-wasm-browser.wasm` into `public/assets/` so the
+   * package-owned, compatibility-tested assets are used).
    */
   wasmAssetsPath?: string;
 }
@@ -171,7 +172,7 @@ async function ensureJeepSqliteElement(wasmAssetsPath: string): Promise<void> {
     return;
   }
 
-  const { defineCustomElements } = await import('jeep-sqlite/loader');
+  const { defineCustomElements } = await import('@arcade-cabinet/jeep-sqlite/loader');
   await defineCustomElements(window);
 
   let jeepEl = document.querySelector('jeep-sqlite');
