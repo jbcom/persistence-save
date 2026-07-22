@@ -4,9 +4,10 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const packageRoot = path.resolve(import.meta.dirname, '..');
-const sqlPackageRoot = path.dirname(require.resolve('sql.js/package.json'));
-const source = path.join(sqlPackageRoot, 'dist/sql-wasm.wasm');
+const sqlDistRoot = path.dirname(require.resolve('sql.js'));
 const destinationDirectory = path.join(packageRoot, 'dist/assets');
 
 await mkdir(destinationDirectory, { recursive: true });
-await copyFile(source, path.join(destinationDirectory, 'sql-wasm.wasm'));
+for (const assetName of ['sql-wasm.wasm', 'sql-wasm-browser.wasm']) {
+  await copyFile(path.join(sqlDistRoot, assetName), path.join(destinationDirectory, assetName));
+}
