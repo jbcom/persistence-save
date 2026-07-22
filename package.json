@@ -33,6 +33,7 @@
     "build:types": "tsc -p tsconfig.types.json",
     "build:fixup": "node scripts/fixup-cjs-package-json.mjs",
     "clean": "rimraf dist",
+    "prepack": "pnpm run clean && pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
