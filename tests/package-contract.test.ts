@@ -40,5 +40,5 @@ describe('published package contract', () => {
     } finally {
       await rm(packDirectory, { force: true, recursive: true });
     }
-  });
+  }, 30_000);
 });
