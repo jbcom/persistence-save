@@ -5,7 +5,7 @@
  * which doubles as a regression guard on the zero-injection-surface policy.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VersionedSnapshot } from '../src/migrations.js';
+import { SnapshotVersionError, type VersionedSnapshot } from '../src/migrations.js';
 import type { PersistenceConfig } from '../src/persistence.js';
 import { CorruptSaveError, createPersistence } from '../src/persistence.js';
 
@@ -31,6 +31,7 @@ const state = vi.hoisted(() => ({
     version: number;
   }>,
   saveToStoreCalls: [] as string[],
+  executeStatements: [] as string[],
   platform: 'web',
   failOpen: false,
   prefs: new Map<string, string>(),
@@ -74,8 +75,9 @@ vi.mock('@capacitor-community/sqlite', () => {
       /* fake driver: nothing to release */
     }
 
-    async execute(_sql: string): Promise<void> {
+    async execute(sql: string): Promise<void> {
       // Schema DDL — the fake pre-creates its table shape.
+      state.executeStatements.push(sql);
     }
 
     async run(sql: string, params: unknown[] = []): Promise<void> {
@@ -240,6 +242,7 @@ describe('createPersistence', () => {
     state.connections.clear();
     state.createConnectionCalls.length = 0;
     state.saveToStoreCalls.length = 0;
+    state.executeStatements.length = 0;
     state.prefs.clear();
     state.platform = 'web';
     state.failOpen = false;
@@ -308,6 +311,27 @@ describe('createPersistence', () => {
     await expect(p.load(id)).rejects.toThrow(/too large/);
   });
 
+  it('measures the read cap in UTF-8 bytes, not UTF-16 code units', async () => {
+    const dbName = freshDbName();
+    const p = createPersistence(makeConfig(dbName, { maxSnapshotBytes: 100 }));
+    const snapshot = JSON.stringify({
+      version: 2,
+      seedPhrase: 'old-seed',
+      gold: 5,
+      towers: ['界'.repeat(30)],
+    });
+    expect(snapshot.length).toBeLessThan(100);
+    expect(new TextEncoder().encode(snapshot).byteLength).toBeGreaterThan(100);
+    const id = insertRawRow(dbName, {
+      name: 'utf8-over-budget',
+      seed: 'old-seed',
+      saved_at: '2026-07-20T09:00:00.000Z',
+      snapshot,
+    });
+
+    await expect(p.load(id)).rejects.toThrow(/too large/);
+  });
+
   it('load() throws CorruptSaveError on an unknown future snapshot version', async () => {
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName));
@@ -334,6 +358,42 @@ describe('createPersistence', () => {
     expect(rec).not.toBeNull();
     // The v1→v2 migration filled the missing `towers` field.
     expect(rec!.snapshot).toEqual({ seedPhrase: 'old-seed', gold: 5, towers: [] });
+  });
+
+  it('keeps a 0.1.2-era row byte-identical until an explicit same-name save replaces it', async () => {
+    const dbName = freshDbName();
+    const legacyBytes = JSON.stringify({
+      version: 1,
+      seedPhrase: 'old-seed',
+      gold: 5,
+    });
+    const id = insertRawRow(dbName, {
+      name: 'legacy',
+      seed: 'old-seed',
+      saved_at: '2026-07-20T09:00:00.000Z',
+      snapshot: legacyBytes,
+    });
+    const p = createPersistence(makeConfig(dbName));
+
+    const firstLoad = await p.load(id);
+    expect(firstLoad?.snapshot).toEqual({ seedPhrase: 'old-seed', gold: 5, towers: [] });
+    expect(state.databases.get(dbName)?.rows[0]?.snapshot).toBe(legacyBytes);
+
+    await p.close();
+    const reopenedLoad = await p.load(id);
+    expect(reopenedLoad?.snapshot).toEqual(firstLoad?.snapshot);
+    expect(state.databases.get(dbName)?.rows[0]?.snapshot).toBe(legacyBytes);
+
+    await p.save('legacy', reopenedLoad!.snapshot);
+    const rows = state.databases.get(dbName)?.rows ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.snapshot).not.toBe(legacyBytes);
+    expect(JSON.parse(String(rows[0]?.snapshot))).toEqual({
+      version: CURRENT_VERSION,
+      seedPhrase: 'old-seed',
+      gold: 5,
+      towers: [],
+    });
   });
 
   it('list() returns newest-first and skips corrupt rows individually (M_SEC.21)', async () => {
@@ -398,6 +458,69 @@ describe('createPersistence', () => {
     ).rejects.toThrow(/too large to save/);
   });
 
+  it('measures the write cap in UTF-8 bytes before opening or mutating the DB', async () => {
+    const dbName = freshDbName();
+    const p = createPersistence(makeConfig(dbName, { maxSnapshotBytes: 100 }));
+
+    await expect(p.save('utf8', { ...STATE_A, towers: ['界'.repeat(30)] })).rejects.toThrow(
+      /too large to save/,
+    );
+    expect(state.createConnectionCalls).toEqual([]);
+    expect(state.databases.get(dbName)?.rows ?? []).toEqual([]);
+  });
+
+  it.each([
+    ['null', null],
+    ['array', []],
+    ['missing version', { seedPhrase: 'x', gold: 0, towers: [] }],
+    ['wrong target', { version: 1, seedPhrase: 'x', gold: 0, towers: [] }],
+    [
+      'unsafe version',
+      { version: Number.MAX_SAFE_INTEGER + 1, seedPhrase: 'x', gold: 0, towers: [] },
+    ],
+    [
+      'toJSON primitive replacement',
+      {
+        version: CURRENT_VERSION,
+        seedPhrase: 'x',
+        gold: 0,
+        towers: [],
+        toJSON: () => null,
+      },
+    ],
+    [
+      'toJSON wrong-version replacement',
+      {
+        version: CURRENT_VERSION,
+        seedPhrase: 'x',
+        gold: 0,
+        towers: [],
+        toJSON: () => ({ version: 1 }),
+      },
+    ],
+  ])('rejects hostile serialize output (%s) before any DB mutation', async (_label, output) => {
+    const dbName = freshDbName();
+    const p = createPersistence(
+      makeConfig(dbName, {
+        serialize: () => output as unknown as TestSnapshot,
+      }),
+    );
+
+    await expect(p.save('hostile', STATE_A)).rejects.toThrow(SnapshotVersionError);
+    expect(state.createConnectionCalls).toEqual([]);
+    expect(state.executeStatements).toEqual([]);
+    expect(state.databases.get(dbName)?.rows ?? []).toEqual([]);
+  });
+
+  it('rejects an unsafe configured target at construction', () => {
+    expect(() =>
+      createPersistence(
+        makeConfig(freshDbName(), { snapshotVersion: Number.MAX_SAFE_INTEGER + 1 }),
+      ),
+    ).toThrow(SnapshotVersionError);
+    expect(state.createConnectionCalls).toEqual([]);
+  });
+
   it('save() defaults seedPhrase to empty when seedPhraseOf is unset', async () => {
     const config = makeConfig(freshDbName());
     delete config.seedPhraseOf;
@@ -460,6 +583,40 @@ describe('createPersistence', () => {
     const p2 = createPersistence(makeConfig(dbName, { encrypted: true }));
     await p2.save('slot2', STATE_A);
     expect(state.prefs.get(`${dbName}.dbKey`)).toBe(key);
+  });
+
+  it('preserves a caller-specified legacy SQLCipher preference key', async () => {
+    state.platform = 'android';
+    const dbName = freshDbName();
+    const p = createPersistence(
+      makeConfig(dbName, {
+        encrypted: true,
+        encryptionKeyPreference: 'aethelgard.dbKey',
+      }),
+    );
+    await p.save('slot', STATE_A);
+    expect(state.prefs.has('aethelgard.dbKey')).toBe(true);
+    expect(state.prefs.has(`${dbName}.dbKey`)).toBe(false);
+  });
+
+  it('initializes game-owned tables and operates them through the shared connection', async () => {
+    const initializeSchema = vi.fn(async (connection) => {
+      await connection.execute('CREATE TABLE IF NOT EXISTS lorebook (id INTEGER PRIMARY KEY);');
+    });
+    const p = createPersistence(makeConfig(freshDbName(), { initializeSchema }));
+
+    const result = await p.withConnection(async (connection) => {
+      await connection.execute('CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY);');
+      return 'shared-connection-ok';
+    }, 'unavailable');
+    await p.flush();
+
+    expect(result).toBe('shared-connection-ok');
+    expect(initializeSchema).toHaveBeenCalledTimes(1);
+    expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS saves');
+    expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS lorebook');
+    expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS achievements');
+    expect(state.saveToStoreCalls).toHaveLength(1);
   });
 
   it('degrades to graceful no-ops when the DB cannot open', async () => {

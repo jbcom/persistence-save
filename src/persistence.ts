@@ -35,7 +35,12 @@ import {
   SQLiteConnection,
   type SQLiteDBConnection,
 } from '@capacitor-community/sqlite';
-import { type MigrationTable, migrateSnapshot, type VersionedSnapshot } from './migrations.js';
+import {
+  type MigrationTable,
+  migrateSnapshot,
+  SnapshotVersionError,
+  type VersionedSnapshot,
+} from './migrations.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -77,6 +82,18 @@ export interface Persistence<TState> {
   list(): Promise<SaveRecord<TState>[]>;
   /** Delete a save by row id. No-op when the row doesn't exist. */
   delete(id: number): Promise<void>;
+  /**
+   * Run a game-owned operation through this facade's live connection. This is
+   * the extension seam for adjacent tables (lorebook, achievements, etc.) so
+   * a consuming game does not create a second SQLite connection manager.
+   * Returns `fallback` when SQLite is unavailable.
+   */
+  withConnection<TResult>(
+    operation: (connection: SQLiteDBConnection) => Promise<TResult>,
+    fallback: TResult,
+  ): Promise<TResult>;
+  /** Flush game-owned writes made through {@link withConnection} on web. */
+  flush(): Promise<void>;
   /**
    * Close the underlying DB connection. Subsequent calls re-open lazily.
    * Safe to call when nothing is open.
@@ -123,6 +140,11 @@ export interface PersistenceConfig<TState, TSnapshot extends VersionedSnapshot> 
    * EncryptedSharedPrefs). Ignored on web (sql.js has no SQLCipher).
    */
   encrypted?: boolean;
+  /**
+   * Preferences key used for the native SQLCipher passphrase. Defaults to
+   * `<dbName>.dbKey`; set this only to preserve an established game key.
+   */
+  encryptionKeyPreference?: string;
   /** State → versioned snapshot (must set `version: snapshotVersion`). */
   serialize: (state: TState) => TSnapshot;
   /** Migrated snapshot → live state. */
@@ -136,7 +158,7 @@ export interface PersistenceConfig<TState, TSnapshot extends VersionedSnapshot> 
   /** DoS row cap on list(). Default 50 (M_SEC.13). */
   listLimit?: number;
   /**
-   * Hard cap on snapshot JSON length, enforced on BOTH write and read
+   * Hard cap on snapshot JSON UTF-8 byte length, enforced on BOTH write and read
    * (M_AUDIT2.SEC2.9 — bounds JSON.parse cost on tampered rows).
    * Default 2 MiB.
    */
@@ -148,6 +170,11 @@ export interface PersistenceConfig<TState, TSnapshot extends VersionedSnapshot> 
    * package-owned, compatibility-tested assets are used).
    */
   wasmAssetsPath?: string;
+  /**
+   * Optional game-owned schema initializer run on the same connection after
+   * the package's `saves` table is ready. It must be idempotent.
+   */
+  initializeSchema?: (connection: SQLiteDBConnection) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,11 +222,10 @@ async function ensureJeepSqliteElement(wasmAssetsPath: string): Promise<void> {
  * caller catches, marks the DB unavailable, and saves degrade to a no-op.
  * Better no saves than weak-encrypted saves.
  */
-async function ensureDbSecret(dbName: string): Promise<string> {
+async function ensureDbSecret(prefKey: string): Promise<string> {
   if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
     throw new Error('persistence: WebCrypto unavailable; cannot generate secure DB passphrase');
   }
-  const prefKey = `${dbName}.dbKey`;
   const existing = await Preferences.get({ key: prefKey });
   if (existing.value && existing.value.length >= 32) return existing.value;
   const bytes = new Uint8Array(64);
@@ -218,6 +244,14 @@ const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
 const MAX_NAME_LENGTH = 256;
 
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function isSnapshotObject(value: unknown): value is VersionedSnapshot {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 /**
  * Create the persistence facade. Synchronous — no I/O at construction time;
  * the DB opens lazily on first use and re-opens after `close()`.
@@ -230,6 +264,7 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
     dbVersion = 1,
     snapshotVersion,
     encrypted = false,
+    encryptionKeyPreference = `${dbName}.dbKey`,
     serialize,
     deserialize,
     migrations,
@@ -238,7 +273,16 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
     listLimit = DEFAULT_LIST_LIMIT,
     maxSnapshotBytes = DEFAULT_MAX_SNAPSHOT_BYTES,
     wasmAssetsPath = '/assets',
+    initializeSchema,
   } = config;
+
+  if (!Number.isSafeInteger(snapshotVersion)) {
+    throw new SnapshotVersionError(
+      Number.NaN,
+      snapshotVersion,
+      'target version must be a safe integer',
+    );
+  }
 
   // Per-instance connection state — all null until the first openDb() call.
   let db: SQLiteDBConnection | null = null;
@@ -286,7 +330,7 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
         // identical and a future SQLCipher.wasm adoption picks up the key
         // automatically.
         const useEncryption = encrypted && !isWebPlatform();
-        const secret = useEncryption ? await ensureDbSecret(dbName) : null;
+        const secret = useEncryption ? await ensureDbSecret(encryptionKeyPreference) : null;
         if (secret && sqliteManager.setEncryptionSecret) {
           try {
             await sqliteManager.setEncryptionSecret(secret);
@@ -317,6 +361,7 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
             snapshot TEXT    NOT NULL
           );
         `);
+        await initializeSchema?.(conn);
 
         db = conn;
         return conn;
@@ -347,8 +392,9 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
     if (typeof snapshotStr !== 'string') {
       throw new Error('snapshot column missing or non-string');
     }
-    if (snapshotStr.length > maxSnapshotBytes) {
-      throw new Error(`snapshot too large (${snapshotStr.length} > ${maxSnapshotBytes} bytes)`);
+    const snapshotBytes = utf8ByteLength(snapshotStr);
+    if (snapshotBytes > maxSnapshotBytes) {
+      throw new Error(`snapshot too large (${snapshotBytes} > ${maxSnapshotBytes} bytes)`);
     }
     const parsed = JSON.parse(snapshotStr) as Record<string, unknown>;
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -366,22 +412,71 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
 
   return {
     async save(name: string, state: TState): Promise<void> {
-      const conn = await openDb();
-      if (!conn) return;
       // M_SEC.12 — cap the save name; a future cloud-sync feature could
       // receive arbitrarily-long input, so truncate at the storage layer.
       const safeName = name.length > MAX_NAME_LENGTH ? name.slice(0, MAX_NAME_LENGTH) : name;
       const seed = seedPhraseOf ? seedPhraseOf(state) : '';
       const savedAt = new Date().toISOString();
-      const snapshot = JSON.stringify(serialize(state));
+      const serialized = serialize(state) as unknown;
+      if (!isSnapshotObject(serialized)) {
+        throw new SnapshotVersionError(
+          Number.NaN,
+          snapshotVersion,
+          'serialize must produce a snapshot object',
+        );
+      }
+      if (!Number.isSafeInteger(serialized.version)) {
+        throw new SnapshotVersionError(
+          typeof serialized.version === 'number' ? serialized.version : Number.NaN,
+          snapshotVersion,
+          'serialize must produce a safe integer version',
+        );
+      }
+      if (serialized.version !== snapshotVersion) {
+        throw new SnapshotVersionError(
+          serialized.version,
+          snapshotVersion,
+          'serialize output must equal the configured target version',
+        );
+      }
+      const snapshot = JSON.stringify(serialized);
+      if (typeof snapshot !== 'string') {
+        throw new Error('persistence: serialize output is not JSON-serializable');
+      }
+      // A hostile `toJSON()` can replace an otherwise valid object during
+      // JSON.stringify. Re-validate the exact bytes destined for SQLite.
+      const encodedSnapshot = JSON.parse(snapshot) as unknown;
+      if (!isSnapshotObject(encodedSnapshot)) {
+        throw new SnapshotVersionError(
+          Number.NaN,
+          snapshotVersion,
+          'serialized JSON must contain a snapshot object',
+        );
+      }
+      if (
+        typeof encodedSnapshot.version !== 'number' ||
+        !Number.isSafeInteger(encodedSnapshot.version) ||
+        encodedSnapshot.version !== snapshotVersion
+      ) {
+        throw new SnapshotVersionError(
+          typeof encodedSnapshot.version === 'number' ? encodedSnapshot.version : Number.NaN,
+          snapshotVersion,
+          'serialized JSON version must equal the configured target version',
+        );
+      }
       // Write-side byte cap, symmetric with the read-side check so a state
       // that serializes over-budget fails loudly HERE, not as a
       // CorruptSaveError on the next load.
-      if (snapshot.length > maxSnapshotBytes) {
+      const snapshotBytes = utf8ByteLength(snapshot);
+      if (snapshotBytes > maxSnapshotBytes) {
         throw new Error(
-          `persistence: snapshot too large to save (${snapshot.length} > ${maxSnapshotBytes} bytes)`,
+          `persistence: snapshot too large to save (${snapshotBytes} > ${maxSnapshotBytes} bytes)`,
         );
       }
+      // Validation and serialization happen before openDb(): malformed
+      // caller output cannot trigger schema creation or any row mutation.
+      const conn = await openDb();
+      if (!conn) return;
       // M_SEC.26 — UPSERT by name: a save with the same name replaces the
       // prior row, idempotently. Defends against React StrictMode
       // double-firing effects inserting duplicate AutoSave rows. The
@@ -451,6 +546,18 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
       const conn = await openDb();
       if (!conn) return;
       await conn.run(`DELETE FROM saves WHERE id = ?;`, [id]);
+      await flushWebStore();
+    },
+
+    async withConnection<TResult>(
+      operation: (connection: SQLiteDBConnection) => Promise<TResult>,
+      fallback: TResult,
+    ): Promise<TResult> {
+      const conn = await openDb();
+      return conn ? operation(conn) : fallback;
+    },
+
+    async flush(): Promise<void> {
       await flushWebStore();
     },
 
