@@ -6,17 +6,20 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { createAnonymousEnvironment } from '../../../scripts/anonymous-environment.mjs';
 
 const run = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
 const scratchRoot = await mkdtemp(path.join(tmpdir(), 'persistence-save-consumer-'));
 const packDirectory = path.join(scratchRoot, 'pack');
 const consumerDirectory = path.join(scratchRoot, 'consumer');
+let childEnvironment = process.env;
 
 async function runChecked(file, args, options = {}) {
   try {
     return await run(file, args, {
       ...options,
+      env: options.env ?? childEnvironment,
       maxBuffer: 16 * 1024 * 1024,
     });
   } catch (error) {
@@ -31,14 +34,29 @@ async function runChecked(file, args, options = {}) {
 try {
   await mkdir(packDirectory, { recursive: true });
   await mkdir(consumerDirectory, { recursive: true });
+  const userConfig = path.join(scratchRoot, 'anonymous.npmrc');
+  await writeFile(
+    userConfig,
+    [
+      'registry=https://registry.npmjs.org/',
+      '@arcade-cabinet:registry=https://registry.npmjs.org/',
+      'audit=false',
+      'fund=false',
+      '',
+    ].join('\n'),
+  );
+  childEnvironment = createAnonymousEnvironment({
+    home: path.join(scratchRoot, 'home'),
+    userConfig,
+  });
 
   const pnpmVersion = (await runChecked('pnpm', ['--version'])).stdout.trim();
-  if (pnpmVersion !== '11.18.0') {
-    throw new Error(`packed consumer requires pnpm 11.18.0, got ${pnpmVersion}`);
+  if (pnpmVersion !== '11.21.0') {
+    throw new Error(`packed consumer requires pnpm 11.21.0, got ${pnpmVersion}`);
   }
   const npmVersion = (await runChecked('npm', ['--version'])).stdout.trim();
-  if (npmVersion !== '11.16.0') {
-    throw new Error(`packed consumer requires npm 11.16.0, got ${npmVersion}`);
+  if (npmVersion !== '11.17.0') {
+    throw new Error(`packed consumer requires npm 11.17.0, got ${npmVersion}`);
   }
 
   await runChecked('npm', ['pack', '--pack-destination', packDirectory], {
@@ -49,6 +67,16 @@ try {
     throw new Error(`expected one packed tarball, found ${archives.length}`);
   }
   const archivePath = path.join(packDirectory, archives[0]);
+  const registryConsumerSource = process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE;
+  const registryConsumerMatch = registryConsumerSource?.match(
+    /^@arcade-cabinet\/persistence-save@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/,
+  );
+  if (registryConsumerSource && !registryConsumerMatch) {
+    throw new Error(
+      'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact @arcade-cabinet/persistence-save package spec',
+    );
+  }
+  const consumerSource = registryConsumerMatch?.[1] ?? `file:${archivePath}`;
   const archiveBytes = await readFile(archivePath);
   const archiveSha256 = createHash('sha256').update(archiveBytes).digest('hex');
   const archiveEntries = new Set(
@@ -77,8 +105,8 @@ try {
         private: true,
         type: 'module',
         dependencies: {
-          '@arcade-cabinet/persistence-save': `file:${archivePath}`,
-          '@capacitor-community/sqlite': '8.1.0',
+          '@arcade-cabinet/persistence-save': consumerSource,
+          '@capacitor-community/sqlite': '8.1.1',
           '@capacitor/core': '8.5.0',
           '@capacitor/preferences': '8.0.1',
         },
@@ -96,6 +124,8 @@ try {
     [
       'registry=https://registry.npmjs.org/',
       '@arcade-cabinet:registry=https://registry.npmjs.org/',
+      'audit=false',
+      'fund=false',
       'auto-install-peers=false',
       'strict-peer-dependencies=true',
       '',
@@ -210,15 +240,13 @@ void persistence.load(1);
     cwd: consumerDirectory,
   });
   const lockfile = await readFile(path.join(consumerDirectory, 'pnpm-lock.yaml'), 'utf8');
-  const archiveReference = `specifier: file:${archivePath}`;
-  if (!lockfile.includes(archiveReference)) {
+  const sourceReference = `specifier: ${consumerSource}`;
+  if (!lockfile.includes(sourceReference)) {
     const persistenceLines = lockfile
       .split('\n')
       .filter((line) => line.includes('persistence-save') || line.includes('file:'))
       .join('\n');
-    throw new Error(
-      `consumer did not resolve ${archiveReference} from the packed tarball:\n${persistenceLines}`,
-    );
+    throw new Error(`consumer did not resolve ${sourceReference}:\n${persistenceLines}`);
   }
   if (/\b(?:link|workspace):/.test(lockfile)) {
     throw new Error('consumer lockfile contains a workspace or link dependency');
@@ -282,7 +310,9 @@ void persistence.load(1);
         installedRoot: resolvedPackageRoot,
         workspaceLeakage: false,
         licenses: ['LICENSE', 'THIRD_PARTY_NOTICES.md'],
-        source: 'npm-packed-tarball',
+        source: process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE
+          ? `private-registry@${consumerSource}`
+          : 'npm-packed-tarball',
       },
       null,
       2,

@@ -40,11 +40,11 @@ describe('Capacitor 8.5 conformance', () => {
       'utf8',
     );
 
-    expect(nodeVersion).toBe('24.18.1');
-    expect(workspaceManifest.packageManager).toBe('pnpm@11.18.0');
+    expect(nodeVersion).toBe('24.19.0');
+    expect(workspaceManifest.packageManager).toBe('pnpm@11.21.0');
     expect(workspaceManifest.devDependencies?.['@types/node']).toBe('24.13.3');
     expect(harnessManifest.devDependencies?.['@types/node']).toBe('24.13.3');
-    expect(consumerVerifier).toContain("npmVersion !== '11.16.0'");
+    expect(consumerVerifier).toContain("npmVersion !== '11.17.0'");
     expect(consumerVerifier).toContain("runChecked('npm', ['pack'");
   });
 
@@ -53,7 +53,7 @@ describe('Capacitor 8.5 conformance', () => {
 
     expect(manifest).toMatchObject({
       version: '0.2.0',
-      engines: { node: '>=24.18.1 <25' },
+      engines: { node: '>=24.19.0 <25' },
       scripts: {
         'test:consumer': 'node scripts/verify-packed-consumer.mjs',
         verify: 'pnpm typecheck && pnpm test && pnpm test:consumer',
@@ -63,18 +63,18 @@ describe('Capacitor 8.5 conformance', () => {
         'sql.js': '1.14.1',
       },
       devDependencies: {
-        '@capacitor-community/sqlite': '8.1.0',
+        '@capacitor-community/sqlite': '8.1.1',
         '@capacitor/core': '8.5.0',
         '@capacitor/preferences': '8.0.1',
         '@types/node': '24.13.3',
         '@types/sql.js': '1.4.11',
         rimraf: '6.1.3',
         typescript: '7.0.2',
-        vite: '8.2.0',
+        vite: '8.2.1',
         vitest: '4.1.10',
       },
       peerDependencies: {
-        '@capacitor-community/sqlite': '>=8.1.0 <9',
+        '@capacitor-community/sqlite': '>=8.1.1 <9',
         '@capacitor/core': '>=8.5.0 <9',
         '@capacitor/preferences': '>=8.0.1 <9',
       },
@@ -85,14 +85,14 @@ describe('Capacitor 8.5 conformance', () => {
       version: '8.0.1',
     });
     await expect(installedManifest('@capacitor-community/sqlite')).resolves.toMatchObject({
-      version: '8.1.0',
+      version: '8.1.1',
     });
   });
 
   it('makes the packed consumer mandatory in package, root, and CI verification', async () => {
     const packageManifest = await readManifest(path.join(packageRoot, 'package.json'));
     const workspaceManifest = await readManifest(path.join(workspaceRoot, 'package.json'));
-    const ciWorkflow = await readFile(path.join(workspaceRoot, '.github/workflows/ci.yml'), 'utf8');
+    const ciWorkflow = await readFile(path.join(workspaceRoot, '.gitea/workflows/ci.yml'), 'utf8');
 
     expect(packageManifest.scripts?.verify).toContain('pnpm test:consumer');
     expect(workspaceManifest.scripts?.['verify:packages']).toContain(

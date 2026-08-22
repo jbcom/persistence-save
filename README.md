@@ -12,7 +12,7 @@ Reusable save-game persistence for Arcade Cabinet games. It provides:
 ## Runtime contract
 
 The 0.2 line is conformed against `@capacitor/core` 8.5.0,
-`@capacitor-community/sqlite` 8.1.0, and `@capacitor/preferences` 8.0.1.
+`@capacitor-community/sqlite` 8.1.1, and `@capacitor/preferences` 8.0.1.
 Consumers install those peers and copy both exported WASM assets to the
 directory passed as `wasmAssetsPath`.
 
@@ -68,7 +68,7 @@ await settings.set('audio.muted', 'false');
 
 ## Verification
 
-Run with Node 24.18.1, pnpm 11.18.0, and the bundled npm 11.16.0 publish
+Run with Node 24.19.0, pnpm 11.21.0, and the bundled npm 11.17.0 publish
 packer:
 
 ```text
@@ -76,9 +76,18 @@ pnpm verify
 ```
 
 The consumer gate is part of the repository `verify:packages` and CI contract.
-It uses npm's exact publish packer, inspects the package-local license and
-sql.js third-party notice, installs the tarball and exact current Capacitor peers
-into a clean non-workspace directory, exercises both ESM and CommonJS
-entrypoints, typechecks a separately-authored consumer, and resolves, reads,
-validates, and compiles both exported WebAssembly assets. Aethelgard dogfoods
-the package and owns the headed jeep-sqlite save/reload proof.
+It uses npm 11.17.0's exact publish packer from the package directory, inspects
+the package-local license and sql.js third-party notice, installs the tarball and
+exact current Capacitor peers into a clean non-workspace directory, exercises
+both ESM and CommonJS entrypoints, typechecks a separately-authored consumer,
+and resolves, reads, validates, and compiles both exported WebAssembly assets.
+The guarded publication workflow repeats the same source pack twice and requires
+byte identity before publishing. It also generates and compares three
+independent normalized SBOMs. Its pnpm 11.21.0 CycloneDX 1.7
+`--lockfile-only --prod --exclude-peers --no-optional` SBOM records the 19
+mandatory runtime components and the root dependency edge to jeep-sqlite and
+sql.js. Capacitor peers and optional backends stay in manifest and consumer
+contracts rather than being mislabeled as bundled components. Source epoch,
+lockfile, package-tree, release-input, and archive provenance make the canonical
+SBOM and checksum set reproducible on retries. Aethelgard dogfoods the package
+and owns the headed jeep-sqlite save/reload proof.
