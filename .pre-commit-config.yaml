@@ -4,7 +4,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-merge-conflict
+      # pnpm 12 writes pnpm-lock.yaml as two YAML documents (environment, then packages).
       - id: check-yaml
+        args: [--allow-multiple-documents]
       - id: check-json
       - id: check-toml
       - id: detect-private-key
