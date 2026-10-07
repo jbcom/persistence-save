@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: joaquinjsb/gitea-release-please-action@cc782b45391b61346202e55b9fc66fd079289e9d # v4.1.10
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+          git-username: ${{ github.actor }}
+          git-password: ${{ secrets.GITEA_TOKEN }}
+          github-api-url: ${{ github.server_url }}/api/v1
+          github-graphql-url: ${{ github.server_url }}/api/v1
+          repo-url: ${{ github.repository }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+      REGISTRY_URL: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Activate the repository pnpm version
+        run: |
+          npm install --global corepack
+          corepack enable
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify before publish
+        run: pnpm verify
+
+      - name: The tag names the version being published
+        run: test "v$(node -p "require('./package.json').version")" = "${RELEASE_TAG}"
+
+      # Gitea's per-run Actions token cannot write packages; publishing uses the
+      # CI organisation secret and fails closed when it is empty.
+      - name: Authenticate to the arcade-cabinet registry
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${NPM_TOKEN}"
+          pnpm config set "//github.com/api/packages/arcade-cabinet/npm/:_authToken" "${NPM_TOKEN}"
+
+      - name: Publish
+        run: pnpm publish --no-git-checks --access restricted --tag latest
+
+      - name: Drop the publish credential
+        if: always()
+        run: pnpm config delete "//github.com/api/packages/arcade-cabinet/npm/:_authToken" || true
+
+      - name: Prove an anonymous cold consumer installs the published version
+        run: |
+          set -euo pipefail
+          PERSISTENCE_SAVE_CONSUMER_SOURCE="@arcade-cabinet/persistence-save@${RELEASE_TAG#v}" pnpm test:consumer

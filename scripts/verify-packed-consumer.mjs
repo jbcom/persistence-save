@@ -2,14 +2,17 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createAnonymousEnvironment } from '../../../scripts/anonymous-environment.mjs';
+import { createAnonymousEnvironment } from './anonymous-environment.mjs';
 
 const run = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
+const packageManifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+const pinnedPnpm = packageManifest.packageManager.replace(/^pnpm@/, '');
+const devPin = (name) => packageManifest.devDependencies[name];
 const scratchRoot = await mkdtemp(path.join(tmpdir(), 'persistence-save-consumer-'));
 const packDirectory = path.join(scratchRoot, 'pack');
 const consumerDirectory = path.join(scratchRoot, 'consumer');
@@ -50,14 +53,11 @@ try {
     userConfig,
   });
 
-  const pnpmVersion = (await runChecked('pnpm', ['--version'])).stdout.trim();
-  if (pnpmVersion !== '11.21.0') {
-    throw new Error(`packed consumer requires pnpm 11.21.0, got ${pnpmVersion}`);
+  const pnpmVersion = (await runChecked('pnpm', ['--version'], { cwd: packageRoot })).stdout.trim();
+  if (pnpmVersion !== pinnedPnpm) {
+    throw new Error(`packed consumer requires pnpm ${pinnedPnpm}, got ${pnpmVersion}`);
   }
   const npmVersion = (await runChecked('npm', ['--version'])).stdout.trim();
-  if (npmVersion !== '11.17.0') {
-    throw new Error(`packed consumer requires npm 11.17.0, got ${npmVersion}`);
-  }
 
   await runChecked('npm', ['pack', '--pack-destination', packDirectory], {
     cwd: packageRoot,
@@ -104,15 +104,16 @@ try {
         name: 'persistence-save-clean-consumer',
         private: true,
         type: 'module',
+        packageManager: packageManifest.packageManager,
         dependencies: {
           '@arcade-cabinet/persistence-save': consumerSource,
-          '@capacitor-community/sqlite': '8.1.1',
-          '@capacitor/core': '8.5.0',
-          '@capacitor/preferences': '8.0.1',
+          '@capacitor-community/sqlite': devPin('@capacitor-community/sqlite'),
+          '@capacitor/core': devPin('@capacitor/core'),
+          '@capacitor/preferences': devPin('@capacitor/preferences'),
         },
         devDependencies: {
-          '@types/node': '24.13.3',
-          typescript: '7.0.2',
+          '@types/node': devPin('@types/node'),
+          typescript: devPin('typescript'),
         },
       },
       null,

@@ -1,13 +1,12 @@
 {
   "name": "@arcade-cabinet/persistence-save",
-  "version": "0.2.0",
-  "description": "Generic save-game persistence facade over @capacitor-community/sqlite (jeep-sqlite/sql.js on web, native SQLite + SQLCipher on device) with a chained snapshot-migration walker, corrupt-save isolation, an autosave debounce/throttle scheduler, and a Capacitor Preferences KV bridge — extracted from Aethelgard-Chronicles-of-Strata's persistence layer.",
+  "version": "0.1.2",
+  "description": "Generic save-game persistence facade over @capacitor-community/sqlite (jeep-sqlite/sql.js on web, native SQLite + SQLCipher on device) with a chained snapshot-migration walker, corrupt-save isolation, an autosave debounce/throttle scheduler, and a Capacitor Preferences KV bridge.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jbcom/Aethelgard-Chronicles-of-Strata",
-    "directory": "packages/persistence-save"
+    "url": "https://github.com/jbcom/persistence-save.git"
   },
   "files": [
     "dist",
@@ -37,10 +36,12 @@
     "build:fixup": "node scripts/fixup-cjs-package-json.mjs",
     "clean": "rimraf dist",
     "prepack": "pnpm run clean && pnpm run build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:consumer": "node scripts/verify-packed-consumer.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "pnpm typecheck && pnpm test && pnpm test:consumer"
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:consumer"
   },
   "peerDependencies": {
     "@capacitor-community/sqlite": ">=8.1.1 <9",
@@ -52,6 +53,7 @@
     "sql.js": "1.14.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@capacitor-community/sqlite": "8.1.1",
     "@capacitor/core": "8.5.0",
     "@capacitor/preferences": "8.0.1",
@@ -63,8 +65,9 @@
     "vitest": "4.1.10"
   },
   "engines": {
-    "node": ">=24.19.0 <25"
+    "node": ">=24.19.0"
   },
+  "packageManager": "pnpm@12.9.1",
   "publishConfig": {
     "access": "restricted",
     "registry": "https://registry.npmjs.org/"

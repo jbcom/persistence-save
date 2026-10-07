@@ -9,6 +9,13 @@ import { SnapshotVersionError, type VersionedSnapshot } from '../src/migrations.
 import type { PersistenceConfig } from '../src/persistence.js';
 import { CorruptSaveError, createPersistence } from '../src/persistence.js';
 
+/** Asserts a value is present and narrows it, so a missing row fails the test by name. */
+function defined<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  expect(value).not.toBeNull();
+  return value as T;
+}
+
 // ---------------------------------------------------------------------------
 // Hoisted fake-driver state
 // ---------------------------------------------------------------------------
@@ -261,12 +268,12 @@ describe('createPersistence', () => {
     expect(records).toHaveLength(1);
     const rec = records[0];
     expect(rec).toBeDefined();
-    const loaded = await p.load(rec!.id);
+    const loaded = await p.load(defined(rec).id);
     expect(loaded).not.toBeNull();
-    expect(loaded!.snapshot).toEqual(STATE_A);
-    expect(loaded!.name).toBe('Slot 1');
-    expect(loaded!.seedPhrase).toBe('ember-vale');
-    expect(loaded!.savedAt).toBe('2026-07-21T10:00:00.000Z');
+    expect(defined(loaded).snapshot).toEqual(STATE_A);
+    expect(defined(loaded).name).toBe('Slot 1');
+    expect(defined(loaded).seedPhrase).toBe('ember-vale');
+    expect(defined(loaded).savedAt).toBe('2026-07-21T10:00:00.000Z');
   });
 
   it('UPSERTs by name — same-name saves replace, StrictMode-safe (M_SEC.26)', async () => {
@@ -277,7 +284,7 @@ describe('createPersistence', () => {
     await p.save('AutoSave', { ...STATE_A, gold: 999 });
     const records = await p.list();
     expect(records).toHaveLength(1);
-    expect(records[0]!.snapshot.gold).toBe(999);
+    expect(defined(records[0]).snapshot.gold).toBe(999);
   });
 
   it('load() returns null when no row exists', async () => {
@@ -357,7 +364,7 @@ describe('createPersistence', () => {
     const rec = await p.load(id);
     expect(rec).not.toBeNull();
     // The v1→v2 migration filled the missing `towers` field.
-    expect(rec!.snapshot).toEqual({ seedPhrase: 'old-seed', gold: 5, towers: [] });
+    expect(defined(rec).snapshot).toEqual({ seedPhrase: 'old-seed', gold: 5, towers: [] });
   });
 
   it('keeps a 0.1.2-era row byte-identical until an explicit same-name save replaces it', async () => {
@@ -384,7 +391,7 @@ describe('createPersistence', () => {
     expect(reopenedLoad?.snapshot).toEqual(firstLoad?.snapshot);
     expect(state.databases.get(dbName)?.rows[0]?.snapshot).toBe(legacyBytes);
 
-    await p.save('legacy', reopenedLoad!.snapshot);
+    await p.save('legacy', defined(reopenedLoad).snapshot);
     const rows = state.databases.get(dbName)?.rows ?? [];
     expect(rows).toHaveLength(1);
     expect(rows[0]?.snapshot).not.toBe(legacyBytes);
@@ -431,7 +438,7 @@ describe('createPersistence', () => {
     }
     const records = await p.list();
     expect(records).toHaveLength(3);
-    expect(records[0]!.name).toBe('slot-4');
+    expect(defined(records[0]).name).toBe('slot-4');
   });
 
   it('save() prunes the oldest rows past maxSaves (M_AUDIT2.SEC2.7)', async () => {
@@ -448,7 +455,7 @@ describe('createPersistence', () => {
     const p = createPersistence(makeConfig(freshDbName()));
     await p.save('x'.repeat(300), STATE_A);
     const records = await p.list();
-    expect(records[0]!.name).toHaveLength(256);
+    expect(defined(records[0]).name).toHaveLength(256);
   });
 
   it('save() rejects an over-budget snapshot on WRITE, symmetric with the read cap', async () => {
@@ -527,7 +534,7 @@ describe('createPersistence', () => {
     const p = createPersistence(config);
     await p.save('slot', STATE_A);
     const records = await p.list();
-    expect(records[0]!.seedPhrase).toBe('');
+    expect(defined(records[0]).seedPhrase).toBe('');
   });
 
   it('flushes the web store after every mutation (M_V13.PERSIST.WEB-FLUSH)', async () => {
@@ -536,7 +543,7 @@ describe('createPersistence', () => {
     await p.save('slot', STATE_A);
     expect(state.saveToStoreCalls).toEqual([dbName]);
     const records = await p.list();
-    await p.delete(records[0]!.id);
+    await p.delete(defined(records[0]).id);
     expect(state.saveToStoreCalls).toEqual([dbName, dbName]);
   });
 
@@ -553,7 +560,7 @@ describe('createPersistence', () => {
     vi.advanceTimersByTime(1000);
     await p.save('drop', STATE_A);
     const before = await p.list();
-    const dropId = before.find((r) => r.name === 'drop')!.id;
+    const dropId = defined(before.find((r) => r.name === 'drop')).id;
     await p.delete(dropId);
     const after = await p.list();
     expect(after.map((r) => r.name)).toEqual(['keep']);
@@ -577,7 +584,7 @@ describe('createPersistence', () => {
     expect(state.createConnectionCalls[0]).toMatchObject({ encrypted: true, mode: 'encryption' });
     const key = state.prefs.get(`${dbName}.dbKey`);
     expect(key).toBeDefined();
-    expect(key!.length).toBeGreaterThanOrEqual(32);
+    expect(defined(key).length).toBeGreaterThanOrEqual(32);
     // Second open reuses the SAME key instead of minting a fresh one.
     await p.close();
     const p2 = createPersistence(makeConfig(dbName, { encrypted: true }));
