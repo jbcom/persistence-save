@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/jbcom/persistence-save/compare/v0.2.2...v0.2.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* support every maintained Node line (22, 24 and 26) ([15a1795](https://github.com/jbcom/persistence-save/commit/15a17953bccc6fffd7fabdb2344bf904e682316e))
+* support maintained Node lines and align house CI rules ([a58e2b9](https://github.com/jbcom/persistence-save/commit/a58e2b930ba266f383ce11549a3517dff33ee85e))
+
 ## [0.2.2](https://github.com/jbcom/persistence-save/compare/v0.2.1...v0.2.2) (2026-10-07)
 
 
