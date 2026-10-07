@@ -14,7 +14,7 @@ describe('web SQLite WASM ABI asset', () => {
   it('uses the current stable sql.js runtime', async () => {
     const sqlPackagePath = path.join(path.dirname(require.resolve('sql.js')), '..', 'package.json');
     const sqlPackage = JSON.parse(await readFile(sqlPackagePath, 'utf8')) as { version: string };
-    expect(sqlPackage.version).toBe('1.14.1');
+    expect(sqlPackage.version).toBe('1.14.2');
   });
 
   it.each(['sql-wasm.wasm', 'sql-wasm-browser.wasm'])(
