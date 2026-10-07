@@ -9,5 +9,5 @@ const cjsDir = resolve(import.meta.dirname, '..', 'dist', 'cjs');
 mkdirSync(cjsDir, { recursive: true });
 writeFileSync(
   resolve(cjsDir, 'package.json'),
-  JSON.stringify({ type: 'commonjs' }, null, 2) + '\n',
+  `${JSON.stringify({ type: 'commonjs' }, null, 2)}\n`,
 );

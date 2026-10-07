@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - uses: joaquinjsb/gitea-release-please-action@cc782b45391b61346202e55b9fc66fd079289e9d # v4.1.10
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+          git-username: ${{ github.actor }}
+          git-password: ${{ secrets.GITEA_TOKEN }}
+          github-api-url: ${{ github.server_url }}/api/v1
+          github-graphql-url: ${{ github.server_url }}/api/v1
+          repo-url: ${{ github.repository }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Reconciles rather than reacting to one run's output: on every main run, if the
+  # manifest version is tagged but missing from the registry, it is published. A
+  # lost or failed run is repaired by the next push, never left half-released.
+  publish:
+    needs: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PACKAGE: "@arcade-cabinet/persistence-save"
+      REGISTRY_URL: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - id: target
+        name: Is the manifest version tagged and missing from the registry?
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          version=$(node -p "require('./.release-please-manifest.json')['.']")
+          tag="v${version}"
+          needed=false
+          if git rev-parse -q --verify "refs/tags/${tag}" > /dev/null; then
+            if ! npm view "${PACKAGE}@${version}" version --registry "${REGISTRY_URL}" --userconfig /dev/null > /dev/null 2>&1; then
+              needed=true
+            fi
+          fi
+          printf 'version=%s\ntag=%s\nneeded=%s\n' "$version" "$tag" "$needed" >> "$GITHUB_OUTPUT"
+          echo "${tag}: publish needed: ${needed}"
+
+      - name: Verify the package at its tag
+        if: steps.target.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          git checkout --detach "refs/tags/${{ steps.target.outputs.tag }}"
+          # Node 25+ no longer bundles Corepack; `packageManager` pins pnpm.
+          npm install --global corepack
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm verify
+          test "$(node -p "require('./package.json').version")" = "${{ steps.target.outputs.version }}"
+
+      - name: Pack twice and require byte identity
+        if: steps.target.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/a" "${RUNNER_TEMP}/b"
+          npm pack --pack-destination "${RUNNER_TEMP}/a"
+          npm pack --pack-destination "${RUNNER_TEMP}/b"
+          cmp "${RUNNER_TEMP}"/a/*.tgz "${RUNNER_TEMP}"/b/*.tgz
+          sha256sum "${RUNNER_TEMP}"/a/*.tgz
+
+      # Gitea's per-run Actions token cannot write packages; publishing uses the
+      # CI organisation secret, fails closed when it is empty, and
+      # lives only in a throwaway npmrc for this one step.
+      - name: Publish the packed bytes
+        if: steps.target.outputs.needed == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${NPM_TOKEN}"
+          npmrc="${RUNNER_TEMP}/publish.npmrc"
+          trap 'rm -f "${npmrc}"' EXIT
+          printf '%s:_authToken=%s\n' "${REGISTRY_URL#https:}" "${NPM_TOKEN}" > "${npmrc}"
+          npm publish "${RUNNER_TEMP}"/a/*.tgz --registry "${REGISTRY_URL}" --userconfig "${npmrc}" --tag latest
+
+      - name: Prove an anonymous cold consumer installs the published version
+        if: steps.target.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          npm view "${PACKAGE}@${{ steps.target.outputs.version }}" version --registry "${REGISTRY_URL}" --userconfig /dev/null
+          PERSISTENCE_SAVE_CONSUMER_SOURCE="${PACKAGE}@${{ steps.target.outputs.version }}" pnpm test:consumer

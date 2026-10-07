@@ -1,19 +1,19 @@
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { CapacitorSQLite } from '@capacitor-community/sqlite';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { CapacitorSQLite } from '@capacitor-community/sqlite';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const packageRoot = path.resolve(import.meta.dirname, '..');
-const workspaceRoot = path.resolve(packageRoot, '../..');
 
 interface PackageManifest {
   version: string;
   packageManager?: string;
   engines?: Record<string, string>;
+  repository?: { type: string; url: string; directory?: string };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -28,35 +28,33 @@ async function installedManifest(name: string): Promise<PackageManifest> {
   return readManifest(require.resolve(`${name}/package.json`));
 }
 
-describe('Capacitor 8.5 conformance', () => {
-  it('pins the workspace release toolchain exactly', async () => {
-    const workspaceManifest = await readManifest(path.join(workspaceRoot, 'package.json'));
-    const harnessManifest = await readManifest(
-      path.join(workspaceRoot, 'packages/test-harness/package.json'),
-    );
-    const nodeVersion = (await readFile(path.join(workspaceRoot, '.node-version'), 'utf8')).trim();
-    const consumerVerifier = await readFile(
-      path.join(packageRoot, 'scripts/verify-packed-consumer.mjs'),
-      'utf8',
-    );
+function readRepoFile(relativePath: string): Promise<string> {
+  return readFile(path.join(packageRoot, relativePath), 'utf8');
+}
 
-    expect(nodeVersion).toBe('24.19.0');
-    expect(workspaceManifest.packageManager).toBe('pnpm@11.21.0');
-    expect(workspaceManifest.devDependencies?.['@types/node']).toBe('24.13.3');
-    expect(harnessManifest.devDependencies?.['@types/node']).toBe('24.13.3');
-    expect(consumerVerifier).toContain("npmVersion !== '11.17.0'");
-    expect(consumerVerifier).toContain("runChecked('npm', ['pack'");
+describe('Capacitor 8.5 conformance', () => {
+  it('is its own repository, built and released on the fleet toolchain', async () => {
+    const manifest = await readManifest(path.join(packageRoot, 'package.json'));
+    const nodeVersion = (await readRepoFile('.node-version')).trim();
+
+    expect(manifest.repository).toEqual({
+      type: 'git',
+      url: 'https://github.com/jbcom/persistence-save.git',
+    });
+    expect(nodeVersion).toBe('26');
+    expect(manifest.packageManager).toMatch(/^pnpm@12\.\d+\.\d+$/);
+    // A library: the floor is the oldest runtime a fleet game still ships on, with no ceiling.
+    expect(manifest.engines).toEqual({ node: '>=24.19.0' });
+    expect(manifest.devDependencies?.['@types/node']).toMatch(/^24\./);
   });
 
-  it('pins the admitted toolchain, current runtime matrix, and bounded peer ranges', async () => {
+  it('pins the admitted dependency matrix and bounded peer ranges', async () => {
     const manifest = await readManifest(path.join(packageRoot, 'package.json'));
 
     expect(manifest).toMatchObject({
-      version: '0.2.0',
-      engines: { node: '>=24.19.0 <25' },
       scripts: {
         'test:consumer': 'node scripts/verify-packed-consumer.mjs',
-        verify: 'pnpm typecheck && pnpm test && pnpm test:consumer',
+        verify: 'pnpm lint && pnpm typecheck && pnpm test && pnpm test:consumer',
       },
       dependencies: {
         '@arcade-cabinet/jeep-sqlite': '2.8.0-arcade.2',
@@ -66,12 +64,6 @@ describe('Capacitor 8.5 conformance', () => {
         '@capacitor-community/sqlite': '8.1.1',
         '@capacitor/core': '8.5.0',
         '@capacitor/preferences': '8.0.1',
-        '@types/node': '24.13.3',
-        '@types/sql.js': '1.4.11',
-        rimraf: '6.1.3',
-        typescript: '7.0.2',
-        vite: '8.2.1',
-        vitest: '4.1.10',
       },
       peerDependencies: {
         '@capacitor-community/sqlite': '>=8.1.1 <9',
@@ -89,39 +81,20 @@ describe('Capacitor 8.5 conformance', () => {
     });
   });
 
-  it('makes the packed consumer mandatory in package, root, and CI verification', async () => {
-    const packageManifest = await readManifest(path.join(packageRoot, 'package.json'));
-    const workspaceManifest = await readManifest(path.join(workspaceRoot, 'package.json'));
-    const ciWorkflow = await readFile(path.join(workspaceRoot, '.gitea/workflows/ci.yml'), 'utf8');
+  it('makes the packed consumer mandatory in CI and proves the published bytes anonymously', async () => {
+    const ciWorkflow = await readRepoFile('.gitea/workflows/ci.yml');
+    const releaseWorkflow = await readRepoFile('.gitea/workflows/release.yml');
 
-    expect(packageManifest.scripts?.verify).toContain('pnpm test:consumer');
-    expect(workspaceManifest.scripts?.['verify:packages']).toContain(
-      '@arcade-cabinet/persistence-save run test:consumer',
+    expect(ciWorkflow).toContain('run: pnpm verify');
+    expect(releaseWorkflow).toMatch(/git checkout --detach "refs\/tags\/[^"]+"[\s\S]+?pnpm verify/);
+    expect(releaseWorkflow).toContain('secrets.NPM_TOKEN');
+    expect(releaseWorkflow).toContain('PACKAGE: "@arcade-cabinet/persistence-save"');
+    expect(releaseWorkflow).toMatch(
+      /PERSISTENCE_SAVE_CONSUMER_SOURCE="\$\{PACKAGE\}@\$\{\{ steps\.target\.outputs\.version \}\}" pnpm test:consumer/,
     );
-    expect(workspaceManifest.scripts?.verify).toContain('pnpm verify:packages');
-    expect(ciWorkflow).toContain('run: pnpm verify:packages');
-  });
-
-  it('is dogfooded by the Aethelgard winner without a duplicate connection manager', async () => {
-    const workspaceManifest = await readManifest(path.join(workspaceRoot, 'package.json'));
-    const facadeSource = await readFile(
-      path.join(workspaceRoot, 'src/persistence/persistence.ts'),
-      'utf8',
+    expect(releaseWorkflow).toMatch(
+      /cmp "\$\{RUNNER_TEMP\}"\/a\/\*\.tgz "\$\{RUNNER_TEMP\}"\/b\/\*\.tgz/,
     );
-    const copyWasmSource = await readFile(
-      path.join(workspaceRoot, 'scripts/copy-wasm.mjs'),
-      'utf8',
-    );
-
-    expect(workspaceManifest.dependencies?.['@arcade-cabinet/persistence-save']).toBe(
-      'workspace:*',
-    );
-    expect(facadeSource).toContain('createPersistence as createSaveStore');
-    expect(facadeSource).toContain('const saveStore = createSaveStore<GameSnapshot, GameSnapshot>');
-    expect(facadeSource).toContain('encryptionKeyPreference: PREF_KEYS.dbKey');
-    expect(facadeSource).not.toContain('new SQLiteConnection(');
-    expect(facadeSource).not.toContain('CapacitorSQLite');
-    expect(copyWasmSource).toContain('@arcade-cabinet/persistence-save/assets/');
   });
 
   it('uses public plugin surfaces that remain present on the admitted matrix', () => {

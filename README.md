@@ -66,28 +66,58 @@ const settings = createPreferencesKv('com.example.game');
 await settings.set('audio.muted', 'false');
 ```
 
-## Verification
+## Install
 
-Run with Node 24.19.0, pnpm 11.21.0, and the bundled npm 11.17.0 publish
-packer:
-
-```text
-pnpm verify
+```sh
+pnpm add @arcade-cabinet/persistence-save @capacitor/core @capacitor-community/sqlite @capacitor/preferences
 ```
 
-The consumer gate is part of the repository `verify:packages` and CI contract.
-It uses npm 11.17.0's exact publish packer from the package directory, inspects
-the package-local license and sql.js third-party notice, installs the tarball and
-exact current Capacitor peers into a clean non-workspace directory, exercises
-both ESM and CommonJS entrypoints, typechecks a separately-authored consumer,
-and resolves, reads, validates, and compiles both exported WebAssembly assets.
-The guarded publication workflow repeats the same source pack twice and requires
-byte identity before publishing. It also generates and compares three
-independent normalized SBOMs. Its pnpm 11.21.0 CycloneDX 1.7
-`--lockfile-only --prod --exclude-peers --no-optional` SBOM records the 19
-mandatory runtime components and the root dependency edge to jeep-sqlite and
-sql.js. Capacitor peers and optional backends stay in manifest and consumer
-contracts rather than being mislabeled as bundled components. Source epoch,
-lockfile, package-tree, release-input, and archive provenance make the canonical
-SBOM and checksum set reproducible on retries. Aethelgard dogfoods the package
-and owns the headed jeep-sqlite save/reload proof.
+The package is served by the `arcade-cabinet` Gitea registry on the private
+VPN. Reads are anonymous; the consumer only needs the scope mapped:
+
+```ini
+@arcade-cabinet:registry=https://registry.npmjs.org/
+```
+
+The engine floor is Node 24.19.0 with no ceiling: fleet games on Node 24 and
+Node 26 both consume it.
+
+## Development
+
+This repository is the package's only home. It was extracted from
+`Aethelgard-Chronicles-of-Strata/packages/persistence-save` on 2026-10-07 with its
+history, so that no game is a dependency of a shared package; games prove the
+package by installing it from the registry.
+
+Built on the fleet toolchain, Node 26 (`.node-version`) and pnpm 12
+(`packageManager`, through Corepack):
+
+```sh
+corepack enable
+pnpm install --frozen-lockfile
+pnpm verify   # Biome, tsc, Vitest, then the packed-consumer proof
+```
+
+`pnpm test:consumer` packs the package with npm's publish packer, checks the
+tarball carries the license, the sql.js third-party notice and both WASM assets,
+then installs it with the exact Capacitor peers into a clean non-workspace
+directory under an anonymous HOME (no registry credential can leak in). There it
+exercises the ESM and CommonJS entry points, typechecks a separately authored
+consumer, and compiles both exported WebAssembly assets. Set
+`PERSISTENCE_SAVE_CONSUMER_SOURCE=@arcade-cabinet/persistence-save@<version>` to
+run the same proof against a published version instead of the local tarball.
+
+## Release
+
+Conventional Commits drive release-please (`.gitea/workflows/release.yml`). Merging
+its release pull request tags `v<version>`. The publish job reconciles on every
+`main` run: when the manifest version is tagged but absent from the registry, it
+re-runs `pnpm verify` on the tag, packs twice and requires byte identity,
+publishes those bytes with the CI organisation secret
+`NPM_TOKEN` (Gitea's per-run Actions token cannot write
+packages) held only in a throwaway npmrc, then runs the consumer proof
+anonymously against the published version. A failed or lost run is repaired by
+the next push. Never edit the `version` field by hand.
+
+Aethelgard-Chronicles-of-Strata dogfoods the package and owns the headed
+jeep-sqlite save/reload proof.
