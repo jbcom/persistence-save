@@ -22,10 +22,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The supported Node range: the active LTS line (engines.node floor, >=24)
-        # and the current release. See https://nodejs.org/en/about/previous-releases.
+        # All maintained Node lines: maintenance LTS, active LTS and current.
         # The package has no path or process logic of its own, so Linux covers it.
         include:
+          - os: ubuntu-24.04
+            node: "22"
           - os: ubuntu-24.04
             node: "24"
           - os: ubuntu-24.04
@@ -94,10 +95,7 @@ jobs:
   gate:
     name: CI / gate
     needs: [verify, docs, sonarcloud, pre-commit]
-    if: >-
-      always() && (github.event_name != 'pull_request' ||
-      !(startsWith(github.event.pull_request.head.ref, 'release-please--') ||
-      (github.event.pull_request.user.login == 'dependabot[bot]' && contains(github.event.pull_request.title, 'non-major'))))
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every native validation job
@@ -107,7 +105,6 @@ jobs:
           SONARCLOUD_RESULT: ${{ needs.sonarcloud.result }}
           PRE_COMMIT_RESULT: ${{ needs.pre-commit.result }}
         run: |
-          test "$VERIFY_RESULT" = success
-          test "$DOCS_RESULT" = success
-          test "$SONARCLOUD_RESULT" = success || test "$SONARCLOUD_RESULT" = skipped
-          test "$PRE_COMMIT_RESULT" = success
+          for result in "$VERIFY_RESULT" "$DOCS_RESULT" "$SONARCLOUD_RESULT" "$PRE_COMMIT_RESULT"; do
+            test "$result" = success || test "$result" = skipped || exit 1
+          done

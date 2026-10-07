@@ -31,7 +31,7 @@ npm install persistence-save @capacitor/core @capacitor-community/sqlite @capaci
 
 The three Capacitor packages are peer dependencies. The 0.2 line is verified
 against `@capacitor/core` 8.5, `@capacitor-community/sqlite` 8.1 and
-`@capacitor/preferences` 8.0. Node 24 or later is required to build.
+`@capacitor/preferences` 8.0. Node.js 22, 24 and 26 are supported.
 
 On the web, copy both WebAssembly assets into the directory you pass as
 `wasmAssetsPath` (for example with your bundler's static-copy step):
