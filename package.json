@@ -1,6 +1,6 @@
 {
   "name": "@arcade-cabinet/persistence-save",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Generic save-game persistence facade over @capacitor-community/sqlite (jeep-sqlite/sql.js on web, native SQLite + SQLCipher on device) with a chained snapshot-migration walker, corrupt-save isolation, an autosave debounce/throttle scheduler, and a Capacitor Preferences KV bridge.",
   "type": "module",
   "license": "MIT",
