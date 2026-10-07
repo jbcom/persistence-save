@@ -23,15 +23,22 @@ const definitions = [
   },
 ];
 
-const existing = new Set();
-for (let page = 1; ; page += 1) {
-  const response = await fetch(`${api}/labels?limit=50&page=${page}`, { headers });
-  if (!response.ok) throw new Error(`label inventory page ${page} returned ${response.status}`);
-  const labels = await response.json();
-  for (const label of labels) existing.add(label.name);
-  if (labels.length < 50) break;
+async function failure(response, what) {
+  return new Error(`${what} returned ${response.status}: ${await response.text()}`);
 }
 
+async function labelNames() {
+  const names = new Set();
+  for (let page = 1; ; page += 1) {
+    const response = await fetch(`${api}/labels?limit=50&page=${page}`, { headers });
+    if (!response.ok) throw await failure(response, `label inventory page ${page}`);
+    const labels = await response.json();
+    for (const label of labels) names.add(label.name);
+    if (labels.length < 50) return names;
+  }
+}
+
+const existing = await labelNames();
 for (const definition of definitions) {
   if (existing.has(definition.name)) continue;
   const created = await fetch(`${api}/labels`, {
@@ -39,9 +46,13 @@ for (const definition of definitions) {
     headers,
     body: JSON.stringify(definition),
   });
-  // 409/422: another run created it between the inventory and this write.
-  if (!created.ok && created.status !== 409 && created.status !== 422) {
-    throw new Error(`creating ${definition.name} returned ${created.status}`);
+  if (created.ok) {
+    console.info(`label ${definition.name}: created`);
+    continue;
   }
-  console.info(`label ${definition.name}: ${created.ok ? 'created' : 'already present'}`);
+  // A concurrent run may have created it after the inventory; only that is tolerated. Any other
+  // refusal (an invalid definition, a permission problem) still fails the job with its reason.
+  const error = await failure(created, `creating ${definition.name}`);
+  if (!(await labelNames()).has(definition.name)) throw error;
+  console.info(`label ${definition.name}: created concurrently`);
 }
