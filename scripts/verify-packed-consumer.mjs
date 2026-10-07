@@ -70,7 +70,8 @@ try {
       'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact persistence-save package spec',
     );
   }
-  const consumerSource = registryConsumerMatch ? registryConsumerSource : `file:${archivePath}`;
+  // The consumer's dependency map takes a version or a file: specifier, never a full package spec.
+  const consumerSource = registryConsumerMatch?.[1] ?? `file:${archivePath}`;
   const archiveBytes = await readFile(archivePath);
   const archiveSha256 = createHash('sha256').update(archiveBytes).digest('hex');
   const archiveEntries = new Set(
@@ -304,7 +305,7 @@ void persistence.load(1);
         workspaceLeakage: false,
         licenses: ['LICENSE', 'THIRD_PARTY_NOTICES.md'],
         source: process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE
-          ? `npm-registry:${consumerSource}`
+          ? `npm-registry:${registryConsumerSource}`
           : 'npm-packed-tarball',
       },
       null,
