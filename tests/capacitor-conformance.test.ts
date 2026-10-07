@@ -46,7 +46,7 @@ describe('Capacitor 8.5 conformance', () => {
     expect(nodeVersion).toBe('26');
     expect(manifest.packageManager).toMatch(/^pnpm@12\.\d+\.\d+$/);
     // A library: the floor is the oldest supported Node line, with no ceiling.
-    expect(manifest.engines).toEqual({ node: '>=24' });
+    expect(manifest.engines).toEqual({ node: '>=22' });
     expect(manifest.devDependencies?.['@types/node']).toMatch(/^24\./);
     // Everything resolves from the public registry; no scoped or private registry may creep back.
     const npmrc = await readRepoFile('.npmrc');
@@ -63,11 +63,11 @@ describe('Capacitor 8.5 conformance', () => {
       },
       dependencies: {
         'jeep-sqlite-current-sqljs': '2.9.0',
-        'sql.js': '1.14.1',
+        'sql.js': '1.14.2',
       },
       devDependencies: {
         '@capacitor-community/sqlite': '8.1.1',
-        '@capacitor/core': '8.5.0',
+        '@capacitor/core': '8.5.2',
         '@capacitor/preferences': '8.0.1',
       },
       peerDependencies: {
@@ -77,7 +77,7 @@ describe('Capacitor 8.5 conformance', () => {
       },
     });
 
-    await expect(installedManifest('@capacitor/core')).resolves.toMatchObject({ version: '8.5.0' });
+    await expect(installedManifest('@capacitor/core')).resolves.toMatchObject({ version: '8.5.2' });
     await expect(installedManifest('@capacitor/preferences')).resolves.toMatchObject({
       version: '8.0.1',
     });

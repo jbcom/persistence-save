@@ -5,6 +5,9 @@ what isn't obvious from reading the code alone.
 
 ## Toolchain
 
+- Supported Node.js lines: 22, 24 and 26 (`engines.node: ">=22"`). Local
+  development defaults to Node 26; CI verifies every maintained line.
+
 - Package manager: pnpm, pinned in `package.json#packageManager`. Use
   `mise install` (reads `mise.toml`), or `npm install --global corepack &&
   corepack enable` (Node 25+ no longer bundles Corepack).

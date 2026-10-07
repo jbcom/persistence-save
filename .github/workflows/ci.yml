@@ -22,10 +22,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The supported Node range: the active LTS line (engines.node floor, >=24)
-        # and the current release. See https://nodejs.org/en/about/previous-releases.
+        # All maintained Node lines: maintenance LTS, active LTS and current.
         # The package has no path or process logic of its own, so Linux covers it.
         include:
+          - os: ubuntu-24.04
+            node: "22"
           - os: ubuntu-24.04
             node: "24"
           - os: ubuntu-24.04

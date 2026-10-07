@@ -44,5 +44,8 @@ pinned exactly, so they always match and the API is unchanged. It is pinned exac
 ## Toolchain: build on the current Node, run from the LTS floor
 
 The repository builds on Node 26 and pnpm 12 with TypeScript 7. The published
-package supports Node 24 and later (`engines.node: ">=24"`), and CI runs the
-full gate on both.
+package supports Node.js 22, 24 and 26 (`engines.node: ">=22"`), and CI runs the
+full gate on each maintained line. This is a maintained-line policy rather
+than a claim about every historical patch. The tests and packed consumer are
+also verified locally on Node 22. No shipped entry point needs a later Node
+API floor.
