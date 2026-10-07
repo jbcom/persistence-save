@@ -36,11 +36,11 @@ describe('web SQLite WASM ABI asset', () => {
     const database = new SQL.Database();
 
     database.run('CREATE TABLE proof (name TEXT NOT NULL, score INTEGER NOT NULL)');
-    database.run('INSERT INTO proof VALUES (?, ?)', ['Crownward', 1141]);
+    database.run('INSERT INTO proof VALUES (?, ?)', ['player-one', 1141]);
     expect(database.exec('SELECT name, score FROM proof')).toEqual([
       {
         columns: ['name', 'score'],
-        values: [['Crownward', 1141]],
+        values: [['player-one', 1141]],
       },
     ]);
     database.close();

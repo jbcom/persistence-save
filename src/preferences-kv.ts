@@ -9,12 +9,10 @@
  * Structured save-game rows do NOT belong here — use `createPersistence`'s
  * SQLite store for those.
  *
- * Extracted from Aethelgard-Chronicles-of-Strata's `PREF_KEYS` +
- * `safePersistenceRead` patterns:
- * - M_SEC.33 — every key is namespaced (`<namespace>.<key>`) so keys can
- *   never collide with other apps' Preferences storage (Android shares the
- *   Preferences API across the entire process).
- * - M_MICRO.B.1 — `getParsed` consolidates the catch-and-default read:
+ * - Every key is namespaced (`<namespace>.<key>`) so keys can never collide
+ *   with other apps' Preferences storage (Android shares the Preferences API
+ *   across the entire process).
+ * - `getParsed` consolidates the catch-and-default read:
  *   "give me a parsed value or my fallback", never a rejection.
  */
 
@@ -33,7 +31,7 @@ export interface PreferencesKv {
   /** List the keys present in this namespace (namespace prefix stripped). */
   keys(): Promise<string[]>;
   /**
-   * Safe read with a typed parser + fallback (M_MICRO.B.1). The underlying
+   * Safe read with a typed parser + fallback. The underlying
    * read may reject (corrupt storage, race with a concurrent set) and the
    * parser may throw on a tampered value — either way the fallback is
    * returned and the failure is logged, never thrown.
@@ -43,7 +41,7 @@ export interface PreferencesKv {
 
 /**
  * Create a namespaced KV store. Use a reverse-domain namespace (e.g.
- * `com.example.mygame`) — see M_SEC.33 on why un-namespaced Preferences
+ * `com.example.mygame`) — see the module comment on why un-namespaced Preferences
  * keys are a cross-app collision risk on Android.
  */
 export function createPreferencesKv(namespace: string): PreferencesKv {

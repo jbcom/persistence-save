@@ -1,0 +1,22 @@
+# persistence-save
+
+> Save-game persistence for Capacitor games: one SQLite save/load/list/delete
+> API on web (jeep-sqlite over sql.js and IndexedDB) and native (SQLite with
+> optional SQLCipher), with exact chained snapshot migrations, corrupt-save
+> isolation, an autosave scheduler and a namespaced Preferences bridge.
+
+## Docs
+
+- [Documentation site](https://jonbogaty.com/persistence-save/): guides and reference.
+- [README](https://github.com/jbcom/persistence-save/blob/main/README.md): install,
+  quick start and development.
+- [API reference](https://github.com/jbcom/persistence-save/blob/main/docs/API.md):
+  every export, option and error.
+- [Architecture](https://github.com/jbcom/persistence-save/blob/main/docs/ARCHITECTURE.md):
+  modules and the invariants they protect.
+- [Migrations](https://jonbogaty.com/persistence-save/migrations/): the rules for
+  `N → N+1` snapshot migrations.
+- [AGENTS.md](https://github.com/jbcom/persistence-save/blob/main/AGENTS.md):
+  orientation for coding agents.
+- [CONTRIBUTING.md](https://github.com/jbcom/persistence-save/blob/main/CONTRIBUTING.md):
+  the local gate and review checklist.

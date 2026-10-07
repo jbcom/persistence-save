@@ -29,7 +29,7 @@ describe('createPreferencesKv', () => {
     expect(() => createPreferencesKv('')).toThrow(/non-empty/);
   });
 
-  it('round-trips a value under the namespaced key (M_SEC.33)', async () => {
+  it('round-trips a value under the namespaced key', async () => {
     const kv = createPreferencesKv('com.example.game');
     await kv.set('muted', '1');
     expect(store.get('com.example.game.muted')).toBe('1');
@@ -87,7 +87,7 @@ describe('createPreferencesKv', () => {
     expect(parsed).toBe(0.75);
   });
 
-  it('getParsed() returns the fallback when the parser throws (M_MICRO.B.1)', async () => {
+  it('getParsed() returns the fallback when the parser throws', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* silence expected warn */
     });

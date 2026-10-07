@@ -1,0 +1,20 @@
+name: Dependency Review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    name: Dependency Review / gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          base-ref: ${{ github.event.pull_request.base.sha || format('refs/heads/{0}', github.event.repository.default_branch) }}
+          head-ref: ${{ github.event.pull_request.head.sha || github.sha }}

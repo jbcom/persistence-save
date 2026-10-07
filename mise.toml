@@ -1,0 +1,9 @@
+# Local development only. CI installs Node/pnpm with the official
+# actions/setup-node + pnpm/action-setup (see .github/workflows/*.yml),
+# which is the idiomatic path for GitHub Actions and reads the pnpm
+# version straight from package.json#packageManager — no duplication.
+# `mise install` here gives a contributor's local environment the same
+# default toolchain without needing corepack.
+[tools]
+node = "26"
+pnpm = "12"

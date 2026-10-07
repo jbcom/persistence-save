@@ -1,6 +1,5 @@
 /**
- * Snapshot migration framework — the chained N→N+1 walker extracted from
- * Aethelgard-Chronicles-of-Strata's `serialize-game.ts` (M_AUDIT2.ARCH.36).
+ * Snapshot migration framework — a chained N→N+1 walker.
  *
  * Migration authors write pure `(oldSnap) => newSnap` functions keyed by the
  * safe integer version they migrate FROM. `migrateSnapshot` walks the chain from

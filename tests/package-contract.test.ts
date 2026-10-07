@@ -9,15 +9,15 @@ const packageRoot = path.resolve(import.meta.dirname, '..');
 const run = promisify(execFile);
 
 describe('published package contract', () => {
-  it('accepts only an exact scoped registry package spec from publication CI', async () => {
+  it('accepts only an exact registry package spec for a published-version proof', async () => {
     const verifier = await readFile(
       path.join(packageRoot, 'scripts/verify-packed-consumer.mjs'),
       'utf8',
     );
     expect(verifier).toContain(
-      'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact @arcade-cabinet/persistence-save package spec',
+      'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact persistence-save package spec',
     );
-    expect(verifier).toContain('^@arcade-cabinet\\/persistence-save@');
+    expect(verifier).toContain('^persistence-save@');
   });
 
   it('packs every declared runtime, type, and WASM entrypoint from a clean build', async () => {
@@ -30,7 +30,7 @@ describe('published package contract', () => {
       await run('npm', ['pack', '--pack-destination', packDirectory], { cwd: packageRoot });
       const archives = (await readdir(packDirectory)).filter((entry) => entry.endsWith('.tgz'));
       expect(archives).toHaveLength(1);
-      expect(archives[0]).toBe(`arcade-cabinet-persistence-save-${version}.tgz`);
+      expect(archives[0]).toBe(`persistence-save-${version}.tgz`);
 
       const tarballPath = path.join(packDirectory, archives[0] as string);
       const { stdout: tarOutput } = await run('tar', ['-tzf', tarballPath]);
@@ -38,12 +38,14 @@ describe('published package contract', () => {
 
       expect([...entries]).toEqual(
         expect.arrayContaining([
+          'package/CHANGELOG.md',
           'package/LICENSE',
           'package/README.md',
           'package/THIRD_PARTY_NOTICES.md',
           'package/dist/assets/sql-wasm-browser.wasm',
           'package/dist/assets/sql-wasm.wasm',
           'package/dist/cjs/index.js',
+          'package/dist/cjs/index.d.ts',
           'package/dist/cjs/package.json',
           'package/dist/esm/index.js',
           'package/dist/types/index.d.ts',

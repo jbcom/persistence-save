@@ -1,0 +1,13 @@
+{
+  "name": "persistence-save-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sourcey dev",
+    "build": "sourcey build",
+    "check": "sourcey build"
+  },
+  "dependencies": {
+    "sourcey": "^3.6.9"
+  }
+}

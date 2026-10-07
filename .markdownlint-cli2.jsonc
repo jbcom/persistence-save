@@ -1,0 +1,20 @@
+{
+  "config": {
+    // Tables, image alt text, and API signatures are clearer unwrapped.
+    "MD013": false,
+    // GitHub pull request templates conventionally begin below H1.
+    "MD041": false
+  },
+  "overrides": [
+    {
+      "filter": ["CHANGELOG.md"],
+      "combine": "merge",
+      "config": {
+        // Release Please prepends a generated section that uses this layout.
+        "MD004": false,
+        "MD012": false,
+        "MD024": false
+      }
+    }
+  ]
+}

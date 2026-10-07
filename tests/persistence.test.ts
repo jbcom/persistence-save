@@ -276,7 +276,7 @@ describe('createPersistence', () => {
     expect(defined(loaded).savedAt).toBe('2026-07-21T10:00:00.000Z');
   });
 
-  it('UPSERTs by name — same-name saves replace, StrictMode-safe (M_SEC.26)', async () => {
+  it('UPSERTs by name — same-name saves replace, StrictMode-safe', async () => {
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName));
     await p.save('AutoSave', STATE_A);
@@ -292,7 +292,7 @@ describe('createPersistence', () => {
     expect(await p.load(42)).toBeNull();
   });
 
-  it('load() throws CorruptSaveError on unparseable JSON — never masks as "no save" (M_SEC.22)', async () => {
+  it('load() throws CorruptSaveError on unparseable JSON — never masks as "no save"', async () => {
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName));
     await p.save('good', STATE_A); // forces the connection open + table
@@ -306,7 +306,7 @@ describe('createPersistence', () => {
     await expect(p.load(id)).rejects.toMatchObject({ recordId: id });
   });
 
-  it('load() throws CorruptSaveError on an over-budget snapshot BEFORE parsing (M_AUDIT2.SEC2.9)', async () => {
+  it('load() throws CorruptSaveError on an over-budget snapshot BEFORE parsing', async () => {
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName, { maxSnapshotBytes: 64 }));
     const id = insertRawRow(dbName, {
@@ -403,7 +403,7 @@ describe('createPersistence', () => {
     });
   });
 
-  it('list() returns newest-first and skips corrupt rows individually (M_SEC.21)', async () => {
+  it('list() returns newest-first and skips corrupt rows individually', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* silence expected warn */
     });
@@ -430,7 +430,7 @@ describe('createPersistence', () => {
     }
   });
 
-  it('list() caps rows at listLimit (M_SEC.13)', async () => {
+  it('list() caps rows at listLimit', async () => {
     const p = createPersistence(makeConfig(freshDbName(), { listLimit: 3 }));
     for (let i = 0; i < 5; i++) {
       await p.save(`slot-${i}`, STATE_A);
@@ -441,7 +441,7 @@ describe('createPersistence', () => {
     expect(defined(records[0]).name).toBe('slot-4');
   });
 
-  it('save() prunes the oldest rows past maxSaves (M_AUDIT2.SEC2.7)', async () => {
+  it('save() prunes the oldest rows past maxSaves', async () => {
     const p = createPersistence(makeConfig(freshDbName(), { maxSaves: 3, listLimit: 10 }));
     for (let i = 0; i < 5; i++) {
       await p.save(`slot-${i}`, STATE_A);
@@ -451,7 +451,7 @@ describe('createPersistence', () => {
     expect(records.map((r) => r.name)).toEqual(['slot-4', 'slot-3', 'slot-2']);
   });
 
-  it('save() truncates names over 256 chars (M_SEC.12)', async () => {
+  it('save() truncates names over 256 chars', async () => {
     const p = createPersistence(makeConfig(freshDbName()));
     await p.save('x'.repeat(300), STATE_A);
     const records = await p.list();
@@ -537,7 +537,7 @@ describe('createPersistence', () => {
     expect(defined(records[0]).seedPhrase).toBe('');
   });
 
-  it('flushes the web store after every mutation (M_V13.PERSIST.WEB-FLUSH)', async () => {
+  it('flushes the web store after every mutation', async () => {
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName));
     await p.save('slot', STATE_A);
@@ -576,7 +576,7 @@ describe('createPersistence', () => {
     expect(state.prefs.size).toBe(0); // no key minted on web
   });
 
-  it('mints + persists a per-install SQLCipher key on native when encrypted (M_SEC.4)', async () => {
+  it('mints + persists a per-install SQLCipher key on native when encrypted', async () => {
     state.platform = 'android';
     const dbName = freshDbName();
     const p = createPersistence(makeConfig(dbName, { encrypted: true }));
@@ -598,17 +598,17 @@ describe('createPersistence', () => {
     const p = createPersistence(
       makeConfig(dbName, {
         encrypted: true,
-        encryptionKeyPreference: 'aethelgard.dbKey',
+        encryptionKeyPreference: 'com.example.legacy.dbKey',
       }),
     );
     await p.save('slot', STATE_A);
-    expect(state.prefs.has('aethelgard.dbKey')).toBe(true);
+    expect(state.prefs.has('com.example.legacy.dbKey')).toBe(true);
     expect(state.prefs.has(`${dbName}.dbKey`)).toBe(false);
   });
 
   it('initializes game-owned tables and operates them through the shared connection', async () => {
     const initializeSchema = vi.fn(async (connection) => {
-      await connection.execute('CREATE TABLE IF NOT EXISTS lorebook (id INTEGER PRIMARY KEY);');
+      await connection.execute('CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY);');
     });
     const p = createPersistence(makeConfig(freshDbName(), { initializeSchema }));
 
@@ -621,7 +621,7 @@ describe('createPersistence', () => {
     expect(result).toBe('shared-connection-ok');
     expect(initializeSchema).toHaveBeenCalledTimes(1);
     expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS saves');
-    expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS lorebook');
+    expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS inventory');
     expect(state.executeStatements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS achievements');
     expect(state.saveToStoreCalls).toHaveLength(1);
   });

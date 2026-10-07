@@ -1,0 +1,16 @@
+:root {
+  --sourcey-primary: #1c3a52;
+  --sourcey-primary-light: #377eb7;
+  --sourcey-primary-dark: #0d1b26;
+  --koota-gold: #7a5a34;
+}
+
+/* The hero's navy world-generation ink and brass event accents are carried
+ * into the otherwise deliberately quiet documentation surface. */
+header img {
+  border-radius: 0.35rem;
+}
+
+a:hover {
+  color: var(--koota-gold);
+}

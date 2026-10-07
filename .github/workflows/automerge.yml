@@ -1,0 +1,33 @@
+name: Automerge generated pull requests
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  merge:
+    # Do not check out or execute pull-request code. Only these two trusted,
+    # generated sources can receive the organization automation credential.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (startsWith(github.event.pull_request.head.ref, 'release-please--') ||
+      (github.event.pull_request.user.login == 'dependabot[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'dependabot/') &&
+      contains(github.event.pull_request.title, 'non-major')))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable auto-merge for the trusted generated pull request
+        env:
+          GH_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh pr merge "$PR_URL" --repo "$REPOSITORY" --merge --auto --delete-branch

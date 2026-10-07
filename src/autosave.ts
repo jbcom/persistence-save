@@ -1,9 +1,7 @@
 /**
  * Autosave scheduler — debounce + leading-edge throttle + re-entrant
- * suppression for high-frequency save callers. Ported from kings-road's
- * `src/db/autosave.ts` (the best-engineered debounce/lifecycle story in the
- * fleet per the persistence-save tournament) and instanced: no module-level
- * singletons, so multiple stores / tests compose cleanly.
+ * suppression for high-frequency save callers. Instanced: no module-level
+ * singletons, so multiple stores and tests compose cleanly.
  *
  * Layered ON TOP of `createPersistence` — the facade's synchronous per-write
  * flush doesn't need debouncing for infrequent explicit saves, but a

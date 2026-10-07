@@ -1,0 +1,36 @@
+name: Bug report
+description: Report reproducible incorrect behavior in persistence-save.
+title: "fix: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For security vulnerabilities, use the private reporting link in SECURITY.md.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest runnable code sample, the platform (web, iOS or Android), and exact commands.
+      render: ts
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: persistence-save, Capacitor packages, Node.js, package manager, and platform.
+      placeholder: persistence-save 0.2.1; @capacitor/core 8.5; @capacitor-community/sqlite 8.1; Node 26; Android 16
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add stack traces, a non-sensitive example snapshot, or other useful details.

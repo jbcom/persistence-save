@@ -40,13 +40,7 @@ try {
   const userConfig = path.join(scratchRoot, 'anonymous.npmrc');
   await writeFile(
     userConfig,
-    [
-      'registry=https://registry.npmjs.org/',
-      '@arcade-cabinet:registry=https://registry.npmjs.org/',
-      'audit=false',
-      'fund=false',
-      '',
-    ].join('\n'),
+    ['registry=https://registry.npmjs.org/', 'audit=false', 'fund=false', ''].join('\n'),
   );
   childEnvironment = createAnonymousEnvironment({
     home: path.join(scratchRoot, 'home'),
@@ -69,20 +63,21 @@ try {
   const archivePath = path.join(packDirectory, archives[0]);
   const registryConsumerSource = process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE;
   const registryConsumerMatch = registryConsumerSource?.match(
-    /^@arcade-cabinet\/persistence-save@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/,
+    /^persistence-save@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/,
   );
   if (registryConsumerSource && !registryConsumerMatch) {
     throw new Error(
-      'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact @arcade-cabinet/persistence-save package spec',
+      'PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact persistence-save package spec',
     );
   }
-  const consumerSource = registryConsumerMatch?.[1] ?? `file:${archivePath}`;
+  const consumerSource = registryConsumerMatch ? registryConsumerSource : `file:${archivePath}`;
   const archiveBytes = await readFile(archivePath);
   const archiveSha256 = createHash('sha256').update(archiveBytes).digest('hex');
   const archiveEntries = new Set(
     (await runChecked('tar', ['-tzf', archivePath])).stdout.trim().split('\n'),
   );
   for (const requiredEntry of [
+    'package/CHANGELOG.md',
     'package/LICENSE',
     'package/README.md',
     'package/THIRD_PARTY_NOTICES.md',
@@ -106,7 +101,7 @@ try {
         type: 'module',
         packageManager: packageManifest.packageManager,
         dependencies: {
-          '@arcade-cabinet/persistence-save': consumerSource,
+          'persistence-save': consumerSource,
           '@capacitor-community/sqlite': devPin('@capacitor-community/sqlite'),
           '@capacitor/core': devPin('@capacitor/core'),
           '@capacitor/preferences': devPin('@capacitor/preferences'),
@@ -124,7 +119,6 @@ try {
     path.join(consumerDirectory, '.npmrc'),
     [
       'registry=https://registry.npmjs.org/',
-      '@arcade-cabinet:registry=https://registry.npmjs.org/',
       'audit=false',
       'fund=false',
       'auto-install-peers=false',
@@ -145,26 +139,26 @@ import {
   createAutoSaveScheduler,
   createPersistence,
   migrateSnapshot,
-} from '@arcade-cabinet/persistence-save';
+} from 'persistence-save';
 
-const legacy = { version: 1, name: 'Crownward', gold: 7 };
+const legacy = { version: 1, name: 'player-one', gold: 7 };
 const migrated = migrateSnapshot(legacy, 2, {
   1: (old) => ({ ...old, version: 2, party: [] }),
 });
 assert.deepEqual(migrated, {
   version: 2,
-  name: 'Crownward',
+  name: 'player-one',
   gold: 7,
   party: [],
 });
-assert.equal(JSON.stringify(legacy), '{"version":1,"name":"Crownward","gold":7}');
+assert.equal(JSON.stringify(legacy), '{"version":1,"name":"player-one","gold":7}');
 assert.equal(typeof createAutoSaveScheduler, 'function');
 assert.equal(typeof createPersistence, 'function');
 
 const wasmAssets = ['sql-wasm.wasm', 'sql-wasm-browser.wasm'];
 for (const asset of wasmAssets) {
   const assetUrl = import.meta.resolve(
-    \`@arcade-cabinet/persistence-save/assets/\${asset}\`,
+    \`persistence-save/assets/\${asset}\`,
   );
   const bytes = await readFile(fileURLToPath(assetUrl));
   assert.ok(bytes.byteLength > 500_000, \`\${asset} is unexpectedly small\`);
@@ -176,7 +170,7 @@ console.log('esm-ok:wasm=' + wasmAssets.join(','));
 `;
   const cjsProof = `
 const assert = require('node:assert/strict');
-const persistence = require('@arcade-cabinet/persistence-save');
+const persistence = require('persistence-save');
 
 assert.equal(typeof persistence.createPersistence, 'function');
 assert.equal(typeof persistence.createPreferencesKv, 'function');
@@ -192,7 +186,7 @@ import {
   createPersistence,
   type PersistenceConfig,
   type VersionedSnapshot,
-} from '@arcade-cabinet/persistence-save';
+} from 'persistence-save';
 
 interface State {
   name: string;
@@ -225,11 +219,12 @@ void persistence.load(1);
       target: 'ES2022',
       types: ['node'],
     },
-    include: ['type-proof.ts'],
+    include: ['type-proof.ts', 'type-proof.cts'],
   };
   await writeFile(path.join(consumerDirectory, 'esm-proof.mjs'), esmProof);
   await writeFile(path.join(consumerDirectory, 'cjs-proof.cjs'), cjsProof);
   await writeFile(path.join(consumerDirectory, 'type-proof.ts'), typeProof);
+  await writeFile(path.join(consumerDirectory, 'type-proof.cts'), typeProof);
   await writeFile(
     path.join(consumerDirectory, 'tsconfig.json'),
     `${JSON.stringify(typeConfig, null, 2)}\n`,
@@ -253,10 +248,7 @@ void persistence.load(1);
     throw new Error('consumer lockfile contains a workspace or link dependency');
   }
 
-  const installedPackageRoot = path.join(
-    consumerDirectory,
-    'node_modules/@arcade-cabinet/persistence-save',
-  );
+  const installedPackageRoot = path.join(consumerDirectory, 'node_modules/persistence-save');
   const resolvedPackageRoot = await realpath(installedPackageRoot);
   const resolvedConsumerRoot = await realpath(consumerDirectory);
   if (!resolvedPackageRoot.startsWith(`${resolvedConsumerRoot}${path.sep}`)) {
@@ -270,8 +262,8 @@ void persistence.load(1);
     path.join(installedPackageRoot, 'THIRD_PARTY_NOTICES.md'),
     'utf8',
   );
-  if (!installedLicense.includes('Copyright (c) 2026 arcade-cabinet')) {
-    throw new Error('installed package-local LICENSE is missing Arcade Cabinet copyright');
+  if (!installedLicense.includes('Copyright (c) 2026 Jon Bogaty')) {
+    throw new Error('installed package-local LICENSE is missing the copyright line');
   }
   if (
     !installedNotices.includes('Copyright (c) 2017 sql.js authors') ||
@@ -312,7 +304,7 @@ void persistence.load(1);
         workspaceLeakage: false,
         licenses: ['LICENSE', 'THIRD_PARTY_NOTICES.md'],
         source: process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE
-          ? `private-registry@${consumerSource}`
+          ? `npm-registry:${consumerSource}`
           : 'npm-packed-tarball',
       },
       null,

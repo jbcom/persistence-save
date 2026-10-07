@@ -1,24 +1,52 @@
 {
-  "name": "@arcade-cabinet/persistence-save",
-  "version": "0.2.0",
-  "description": "Generic save-game persistence facade over @capacitor-community/sqlite (jeep-sqlite/sql.js on web, native SQLite + SQLCipher on device) with a chained snapshot-migration walker, corrupt-save isolation, an autosave debounce/throttle scheduler, and a Capacitor Preferences KV bridge.",
+  "name": "persistence-save",
+  "version": "0.2.1",
+  "description": "Save-game persistence for Capacitor games: a SQLite save/load facade (jeep-sqlite/sql.js on the web, native SQLite with SQLCipher on device), chained snapshot migrations, corrupt-save isolation, an autosave scheduler and a Preferences key-value bridge.",
   "type": "module",
   "license": "MIT",
+  "author": "Jon Bogaty <jon@jonbogaty.com>",
+  "homepage": "https://jonbogaty.com/persistence-save/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jbcom/persistence-save.git"
+    "url": "git+https://github.com/jbcom/persistence-save.git"
   },
+  "bugs": {
+    "url": "https://github.com/jbcom/persistence-save/issues"
+  },
+  "keywords": [
+    "capacitor",
+    "sqlite",
+    "save-game",
+    "persistence",
+    "migrations",
+    "autosave",
+    "jeep-sqlite",
+    "sql.js",
+    "sqlcipher",
+    "game-dev"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "sideEffects": false,
   "files": [
     "dist",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./assets/sql-wasm.wasm": "./dist/assets/sql-wasm.wasm",
     "./assets/sql-wasm-browser.wasm": "./dist/assets/sql-wasm-browser.wasm",
@@ -32,16 +60,22 @@
     "build:assets": "node scripts/copy-wasm.mjs",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json",
-    "build:types": "tsc -p tsconfig.types.json",
+    "build:types": "tsc -p tsconfig.types.json && tsc -p tsconfig.types.json --outDir dist/cjs",
     "build:fixup": "node scripts/fixup-cjs-package-json.mjs",
     "clean": "rimraf dist",
     "prepack": "pnpm run clean && pnpm run build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "vitest run",
-    "test:consumer": "node scripts/verify-packed-consumer.mjs",
+    "lint:docs": "markdownlint-cli2 README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md AGENTS.md \"docs/**/*.md\" \"!docs/node_modules/**\" \"!docs/dist/**\" .github/PULL_REQUEST_TEMPLATE.md",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:consumer"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "package:check": "publint && attw --pack . --profile node16",
+    "test:consumer": "node scripts/verify-packed-consumer.mjs",
+    "verify": "pnpm run lint && pnpm run lint:docs && pnpm run typecheck && pnpm run coverage && pnpm run build && pnpm run package:check && pnpm run test:consumer",
+    "docs:dev": "pnpm --filter persistence-save-docs dev",
+    "docs:build": "pnpm --filter persistence-save-docs build",
+    "prepare": "simple-git-hooks"
   },
   "peerDependencies": {
     "@capacitor-community/sqlite": ">=8.1.1 <9",
@@ -49,27 +83,43 @@
     "@capacitor/preferences": ">=8.0.1 <9"
   },
   "dependencies": {
-    "@arcade-cabinet/jeep-sqlite": "2.8.0-arcade.2",
+    "jeep-sqlite-current-sqljs": "2.9.0",
     "sql.js": "1.14.1"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "2.5.15",
     "@capacitor-community/sqlite": "8.1.1",
     "@capacitor/core": "8.5.0",
     "@capacitor/preferences": "8.0.1",
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
     "@types/node": "24.13.3",
     "@types/sql.js": "1.4.11",
+    "@vitest/coverage-v8": "4.1.10",
+    "lint-staged": "17.6.0",
+    "markdownlint-cli2": "0.23.3",
+    "publint": "0.3.25",
     "rimraf": "6.1.3",
+    "simple-git-hooks": "2.14.0",
     "typescript": "7.0.2",
     "vite": "8.2.1",
     "vitest": "4.1.10"
   },
-  "engines": {
-    "node": ">=24.19.0"
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged",
+    "commit-msg": "pnpm exec commitlint --edit $1"
   },
-  "packageManager": "pnpm@12.9.1",
-  "publishConfig": {
-    "access": "restricted",
-    "registry": "https://registry.npmjs.org/"
-  }
+  "lint-staged": {
+    "*.{ts,js,mjs,cjs,json}": [
+      "biome check --write --no-errors-on-unmatched"
+    ],
+    "*.md": [
+      "markdownlint-cli2"
+    ]
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.9.1"
 }

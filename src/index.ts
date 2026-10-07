@@ -1,8 +1,5 @@
 /**
- * @arcade-cabinet/persistence-save — generic save-game persistence for the
- * arcade-cabinet fleet. Extracted from Aethelgard-Chronicles-of-Strata
- * (persistence-save tournament winner, opus-upheld) with the autosave
- * scheduler absorbed from kings-road.
+ * persistence-save — save-game persistence for Capacitor games.
  *
  * - {@link createPersistence} — SQLite-backed save/load/list/delete over
  *   `@capacitor-community/sqlite` (jeep-sqlite/sql.js on web, native SQLite

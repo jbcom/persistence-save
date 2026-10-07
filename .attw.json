@@ -1,0 +1,3 @@
+{
+  "excludeEntrypoints": ["./assets/sql-wasm.wasm", "./assets/sql-wasm-browser.wasm"]
+}

@@ -1,0 +1,32 @@
+name: Lint PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  title:
+    runs-on: ubuntu-24.04
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - if: github.event_name == 'workflow_dispatch'
+        name: Validate the open pull request title for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REF: ${{ github.ref_name }}
+        run: |
+          title="$(gh pr list --repo "$REPOSITORY" --head "$HEAD_REF" --state open --json title --jq '.[0].title')"
+          if [ -z "$title" ]; then
+            echo "No open pull request found for branch $HEAD_REF" >&2
+            exit 1
+          fi
+          printf '%s\n' "$title" | grep -Eq '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'

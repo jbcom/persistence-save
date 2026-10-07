@@ -14,6 +14,7 @@ interface PackageManifest {
   packageManager?: string;
   engines?: Record<string, string>;
   repository?: { type: string; url: string; directory?: string };
+  publishConfig?: Record<string, unknown>;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -33,19 +34,24 @@ function readRepoFile(relativePath: string): Promise<string> {
 }
 
 describe('Capacitor 8.5 conformance', () => {
-  it('is its own repository, built and released on the fleet toolchain', async () => {
+  it('is a public package built and released on the current toolchain', async () => {
     const manifest = await readManifest(path.join(packageRoot, 'package.json'));
-    const nodeVersion = (await readRepoFile('.node-version')).trim();
+    const nodeVersion = (await readRepoFile('.nvmrc')).trim();
 
     expect(manifest.repository).toEqual({
       type: 'git',
-      url: 'https://github.com/jbcom/persistence-save.git',
+      url: 'git+https://github.com/jbcom/persistence-save.git',
     });
+    expect(manifest.publishConfig).toEqual({ access: 'public', provenance: true });
     expect(nodeVersion).toBe('26');
     expect(manifest.packageManager).toMatch(/^pnpm@12\.\d+\.\d+$/);
-    // A library: the floor is the oldest runtime a fleet game still ships on, with no ceiling.
-    expect(manifest.engines).toEqual({ node: '>=24.19.0' });
+    // A library: the floor is the oldest supported Node line, with no ceiling.
+    expect(manifest.engines).toEqual({ node: '>=24' });
     expect(manifest.devDependencies?.['@types/node']).toMatch(/^24\./);
+    // Everything resolves from the public registry; no scoped or private registry may creep back.
+    const npmrc = await readRepoFile('.npmrc');
+    expect(npmrc).toContain('registry=https://registry.npmjs.org/');
+    expect(npmrc).not.toMatch(/^@[^:]+:registry=/m);
   });
 
   it('pins the admitted dependency matrix and bounded peer ranges', async () => {
@@ -54,10 +60,9 @@ describe('Capacitor 8.5 conformance', () => {
     expect(manifest).toMatchObject({
       scripts: {
         'test:consumer': 'node scripts/verify-packed-consumer.mjs',
-        verify: 'pnpm lint && pnpm typecheck && pnpm test && pnpm test:consumer',
       },
       dependencies: {
-        '@arcade-cabinet/jeep-sqlite': '2.8.0-arcade.2',
+        'jeep-sqlite-current-sqljs': '2.9.0',
         'sql.js': '1.14.1',
       },
       devDependencies: {
@@ -81,28 +86,31 @@ describe('Capacitor 8.5 conformance', () => {
     });
   });
 
-  it('makes the packed consumer mandatory in CI and proves the published bytes anonymously', async () => {
-    const ciWorkflow = await readRepoFile('.gitea/workflows/ci.yml');
-    const releaseWorkflow = await readRepoFile('.gitea/workflows/release.yml');
+  it('makes the full gate mandatory in CI and publishes verified tags by OIDC only', async () => {
+    const manifest = await readManifest(path.join(packageRoot, 'package.json'));
+    const ciWorkflow = await readRepoFile('.github/workflows/ci.yml');
+    const cdWorkflow = await readRepoFile('.github/workflows/cd.yml');
 
+    // `verify` is the one gate: lint, docs lint, types, coverage, build, package shape, packed consumer.
+    for (const step of [
+      'lint',
+      'lint:docs',
+      'typecheck',
+      'coverage',
+      'build',
+      'package:check',
+      'test:consumer',
+    ]) {
+      expect(manifest.scripts?.verify).toContain(`pnpm run ${step}`);
+    }
     expect(ciWorkflow).toContain('run: pnpm verify');
-    expect(releaseWorkflow).toMatch(/git checkout --detach "refs\/tags\/[^"]+"[\s\S]+?pnpm verify/);
-    expect(releaseWorkflow).toContain('secrets.NPM_TOKEN');
-    expect(releaseWorkflow).toContain('PACKAGE: "@arcade-cabinet/persistence-save"');
-    // Without these labels release-please cannot find a merged release PR, so it never tags: the
-    // bootstrap must run, and run first.
-    expect(releaseWorkflow).toMatch(
-      /run: node scripts\/ensure-release-labels\.mjs[\s\S]+?joaquinjsb\/gitea-release-please-action/,
-    );
-    const labels = await readRepoFile('scripts/ensure-release-labels.mjs');
-    expect(labels).toContain("name: 'autorelease: pending'");
-    expect(labels).toContain("name: 'autorelease: tagged'");
-    expect(releaseWorkflow).toMatch(
-      /PERSISTENCE_SAVE_CONSUMER_SOURCE="\$\{PACKAGE\}@\$\{\{ steps\.target\.outputs\.version \}\}" pnpm test:consumer/,
-    );
-    expect(releaseWorkflow).toMatch(
-      /cmp "\$\{RUNNER_TEMP\}"\/a\/\*\.tgz "\$\{RUNNER_TEMP\}"\/b\/\*\.tgz/,
-    );
+    // The publish job runs from the release tag, re-verifies it, and publishes with provenance by
+    // OIDC. No long-lived npm token exists for this package.
+    const publishJob = cdWorkflow.slice(cdWorkflow.indexOf('  publish:'));
+    expect(publishJob).toContain('id-token: write');
+    expect(publishJob).toMatch(/ref: \$\{\{ steps\.release\.outputs\.tag \}\}[\s\S]+?pnpm verify/);
+    expect(publishJob).toContain('npm publish --access public --provenance');
+    expect(`${ciWorkflow}\n${cdWorkflow}`).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/);
   });
 
   it('uses public plugin surfaces that remain present on the admitted matrix', () => {
