@@ -86,10 +86,14 @@ describe('Capacitor 8.5 conformance', () => {
     const releaseWorkflow = await readRepoFile('.gitea/workflows/release.yml');
 
     expect(ciWorkflow).toContain('run: pnpm verify');
-    expect(releaseWorkflow).toContain('run: pnpm verify');
+    expect(releaseWorkflow).toMatch(/git checkout --detach "refs\/tags\/[^"]+"[\s\S]+?pnpm verify/);
     expect(releaseWorkflow).toContain('secrets.NPM_TOKEN');
+    expect(releaseWorkflow).toContain('PACKAGE: "@arcade-cabinet/persistence-save"');
     expect(releaseWorkflow).toMatch(
-      /PERSISTENCE_SAVE_CONSUMER_SOURCE="@arcade-cabinet\/persistence-save@\$\{RELEASE_TAG#v\}" pnpm test:consumer/,
+      /PERSISTENCE_SAVE_CONSUMER_SOURCE="\$\{PACKAGE\}@\$\{\{ steps\.target\.outputs\.version \}\}" pnpm test:consumer/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /cmp "\$\{RUNNER_TEMP\}"\/a\/\*\.tgz "\$\{RUNNER_TEMP\}"\/b\/\*\.tgz/,
     );
   });
 

@@ -35,6 +35,15 @@ Gitea 1.27 does not authorise package writes for the per-run Actions token
 hand). The publish step uses the CI organisation secret, fails closed
 when it is empty, and removes it before the anonymous consumer proof runs.
 
+## Publishing reconciles instead of reacting
+
+The publish job does not key off release-please's `release_created` output for
+the run that made the tag. On every `main` run it compares the manifest version
+with the tags and the registry and publishes only what is tagged and missing,
+after packing twice and requiring byte identity. Taken from curse-of-the-mummy's
+`mobile-package` job: a failed publish is repaired by the next push instead of
+leaving a tag with no package behind it.
+
 ## The first release is 0.2.0
 
 The manifest starts at 0.1.2, the last version published from Aethelgard. Commits

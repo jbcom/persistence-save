@@ -110,11 +110,14 @@ run the same proof against a published version instead of the local tarball.
 ## Release
 
 Conventional Commits drive release-please (`.gitea/workflows/release.yml`). Merging
-its release pull request tags `v<version>`; the publish job then re-runs
-`pnpm verify` on the tag, publishes with the CI organisation secret
-`NPM_TOKEN` (Gitea's per-run Actions token cannot write packages),
-and finally runs the consumer proof anonymously against the version it just
-published. Never edit the `version` field by hand.
+its release pull request tags `v<version>`. The publish job reconciles on every
+`main` run: when the manifest version is tagged but absent from the registry, it
+re-runs `pnpm verify` on the tag, packs twice and requires byte identity,
+publishes those bytes with the CI organisation secret
+`NPM_TOKEN` (Gitea's per-run Actions token cannot write
+packages) held only in a throwaway npmrc, then runs the consumer proof
+anonymously against the published version. A failed or lost run is repaired by
+the next push. Never edit the `version` field by hand.
 
 Aethelgard-Chronicles-of-Strata dogfoods the package and owns the headed
 jeep-sqlite save/reload proof.
