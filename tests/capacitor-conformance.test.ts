@@ -89,6 +89,9 @@ describe('Capacitor 8.5 conformance', () => {
     expect(releaseWorkflow).toMatch(/git checkout --detach "refs\/tags\/[^"]+"[\s\S]+?pnpm verify/);
     expect(releaseWorkflow).toContain('secrets.NPM_TOKEN');
     expect(releaseWorkflow).toContain('PACKAGE: "@arcade-cabinet/persistence-save"');
+    // Without these labels release-please cannot find a merged release PR, so it never tags.
+    expect(releaseWorkflow).toContain("name: 'autorelease: pending'");
+    expect(releaseWorkflow).toContain("name: 'autorelease: tagged'");
     expect(releaseWorkflow).toMatch(
       /PERSISTENCE_SAVE_CONSUMER_SOURCE="\$\{PACKAGE\}@\$\{\{ steps\.target\.outputs\.version \}\}" pnpm test:consumer/,
     );

@@ -18,9 +18,36 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
+      # release-please finds a merged release PR by its `autorelease: pending` label. Gitea
+      # does not create labels on first use, so on a repository without them the label write
+      # fails silently, the merge is never tagged, and the next run recomputes a bogus release.
+      - name: Ensure the release lifecycle labels exist
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_SERVER_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const api = `${process.env.GITEA_SERVER_URL}/api/v1/repos/${process.env.GITEA_REPOSITORY}`;
+          const headers = { Authorization: `token ${process.env.GITEA_TOKEN}`, 'Content-Type': 'application/json' };
+          const definitions = [
+            { name: 'autorelease: pending', color: 'fbca04', description: 'Release pull request awaiting tag and Gitea release creation' },
+            { name: 'autorelease: tagged', color: '0e8a16', description: 'Release pull request whose tag and Gitea release were created' },
+          ];
+          const response = await fetch(`${api}/labels?limit=100`, { headers });
+          if (!response.ok) throw new Error(`label inventory returned ${response.status}`);
+          const existing = new Set((await response.json()).map((label) => label.name));
+          for (const definition of definitions) {
+            if (existing.has(definition.name)) continue;
+            const created = await fetch(`${api}/labels`, { method: 'POST', headers, body: JSON.stringify(definition) });
+            if (!created.ok) throw new Error(`creating ${definition.name} returned ${created.status}`);
+          }
+          NODE
+
       - uses: joaquinjsb/gitea-release-please-action@cc782b45391b61346202e55b9fc66fd079289e9d # v4.1.10
         with:
           token: ${{ secrets.GITEA_TOKEN }}
