@@ -77,14 +77,14 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${NPM_TOKEN}"
-          pnpm config set "//github.com/api/packages/arcade-cabinet/npm/:_authToken" "${NPM_TOKEN}"
+          pnpm config set "${REGISTRY_URL#https:}:_authToken" "${NPM_TOKEN}"
 
       - name: Publish
-        run: pnpm publish --no-git-checks --access restricted --tag latest
+        run: pnpm publish --no-git-checks --access restricted --tag latest --registry "${REGISTRY_URL}"
 
       - name: Drop the publish credential
         if: always()
-        run: pnpm config delete "//github.com/api/packages/arcade-cabinet/npm/:_authToken" || true
+        run: pnpm config delete "${REGISTRY_URL#https:}:_authToken" || true
 
       - name: Prove an anonymous cold consumer installs the published version
         run: |
