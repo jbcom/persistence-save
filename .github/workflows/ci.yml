@@ -46,6 +46,23 @@ jobs:
           git diff --exit-code pnpm-lock.yaml
       - run: pnpm verify
 
+  web-cold-reload:
+    name: Web cold reload
+    if: github.event_name != 'pull_request' || !(startsWith(github.event.pull_request.head.ref, 'release-please--') || (github.event.pull_request.user.login == 'dependabot[bot]' && contains(github.event.pull_request.title, 'non-major')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: xvfb-run --auto-servernum pnpm test:web-cold-reload
+
   docs:
     name: Docs build
     if: github.event_name != 'pull_request' || !(startsWith(github.event.pull_request.head.ref, 'release-please--') || (github.event.pull_request.user.login == 'dependabot[bot]' && contains(github.event.pull_request.title, 'non-major')))
@@ -94,17 +111,18 @@ jobs:
 
   gate:
     name: CI / gate
-    needs: [verify, docs, sonarcloud, pre-commit]
+    needs: [verify, web-cold-reload, docs, sonarcloud, pre-commit]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every native validation job
         env:
           VERIFY_RESULT: ${{ needs.verify.result }}
+          WEB_COLD_RELOAD_RESULT: ${{ needs.web-cold-reload.result }}
           DOCS_RESULT: ${{ needs.docs.result }}
           SONARCLOUD_RESULT: ${{ needs.sonarcloud.result }}
           PRE_COMMIT_RESULT: ${{ needs.pre-commit.result }}
         run: |
-          for result in "$VERIFY_RESULT" "$DOCS_RESULT" "$SONARCLOUD_RESULT" "$PRE_COMMIT_RESULT"; do
+          for result in "$VERIFY_RESULT" "$WEB_COLD_RELOAD_RESULT" "$DOCS_RESULT" "$SONARCLOUD_RESULT" "$PRE_COMMIT_RESULT"; do
             test "$result" = success || test "$result" = skipped || exit 1
           done
