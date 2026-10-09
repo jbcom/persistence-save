@@ -143,7 +143,8 @@ async function main() {
     diagnostics.error = describeError(error);
   } finally {
     diagnostics.done = true;
-    document.querySelector('#result').textContent = JSON.stringify(diagnostics);
+    const resultElement = document.querySelector('#result');
+    if (resultElement) resultElement.textContent = JSON.stringify(diagnostics);
   }
 }
 
