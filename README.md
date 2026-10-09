@@ -139,6 +139,9 @@ a packed-consumer proof. That proof packs the package, installs the tarball with
 the exact Capacitor peers into a clean project with an empty home directory and
 only the public registry, then runs the ESM and CommonJS entry points,
 typechecks a separately written consumer, and compiles both WebAssembly assets.
+`pnpm test:web-cold-reload` separately packs the built package, starts a clean
+Vite consumer and uses a headed, muted Chromium session to prove that a flushed
+save has IndexedDB bytes and reopens in a freshly navigated JavaScript realm.
 Set `PERSISTENCE_SAVE_CONSUMER_SOURCE=persistence-save@<version>` to run the same
 proof against a published version.
 

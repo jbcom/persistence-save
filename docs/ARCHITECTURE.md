@@ -14,7 +14,12 @@ description: The modules, the invariants they protect, and where the boundaries 
 | `src/index.ts` | The public surface. Nothing else is exported. |
 
 `scripts/copy-wasm.mjs` copies the sql.js binaries into `dist/assets` at build
-time; `scripts/verify-packed-consumer.mjs` is the packed-tarball proof.
+time; `scripts/verify-packed-consumer.mjs` is the Node packed-tarball proof.
+`scripts/verify-packed-web-cold-reload.mjs` packages the built tarball into a
+clean Vite consumer, checks the IndexedDB record written by a save, then proves
+the same row reopens after a full browser navigation into a fresh JavaScript
+realm. Its `user_version` value is diagnostic only: an existing saves table is
+valid with SQLite's default user version of zero.
 
 ESM and CommonJS exports have separate declarations matching their module kind.
 The CommonJS declarations inherit `dist/cjs/package.json`'s `type: commonjs`.
@@ -41,7 +46,9 @@ it was built to prevent.
    on list.
 6. **The web store is durable when a write resolves.** Every write flushes the
    in-memory sql.js database to IndexedDB before its promise resolves, and flush
-   failures propagate.
+   failures propagate. A packed browser consumer proves the bytes and row reopen
+   after a full navigation; `PRAGMA user_version` is never used as a persistence
+   verdict.
 7. **Encryption fails closed.** Without WebCrypto there is no key generation and
    therefore no encrypted database, rather than a weak key.
 8. **One connection manager.** Games extend the database through
