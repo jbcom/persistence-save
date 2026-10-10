@@ -129,7 +129,9 @@ const autosave = createAutoSaveScheduler({
 
 autosave.schedule(); // after a mutation; bursts coalesce into one write
 autosave.scheduleThrottled('player.health', 2_000); // per-frame callers
-addEventListener('pagehide', () => void autosave.flush());
+addEventListener('pagehide', () => void autosave.flush()); // always saves
+await autosave.flushPending(); // wait for a queued save; writes nothing if none is
+autosave.pending; // true while a debounced or throttled save is queued
 ```
 
 The scheduler takes any `save`, so it works over your own storage too, from

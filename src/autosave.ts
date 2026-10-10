@@ -33,6 +33,25 @@ export interface AutoSaveScheduler {
    */
   flush(): Promise<void>;
   /**
+   * Save now only if a debounced or throttled save is pending, cancelling that
+   * pending timer so the write isn't trailed by a duplicate; otherwise resolve
+   * without calling the provider or `save`. Awaitable — use to WAIT for saves
+   * already asked for (tests, an unmount, an escape that must not race a
+   * pending write) without making one, which {@link AutoSaveScheduler.flush}
+   * cannot do. The write follows the same rules as `flush()`: skipped while
+   * suppressed or when the provider returns null, and a rejection propagates
+   * to the caller instead of going to `onError`. A background save whose timer
+   * has already fired is no longer pending and is not awaited.
+   */
+  flushPending(): Promise<void>;
+  /**
+   * `true` while a debounced or throttled save is queued and has not yet been
+   * written or cancelled. A `schedule()` while suppressed, or a throttled call
+   * swallowed by its window, queues nothing and leaves it unchanged. Cleared
+   * by `cancel()`, `flush()`, `flushPending()` and when the timer fires.
+   */
+  readonly pending: boolean;
+  /**
    * Run `fn` with autosaves suppressed. Re-entrant: nested blocks maintain
    * suppression until every block has exited (counter, not boolean). Wrap
    * state-restore paths so rebuilding state on load doesn't immediately
@@ -63,7 +82,8 @@ export interface AutoSaveSchedulerOptions<TData> {
   /**
    * Called when a background (debounced) save rejects. Persistence failures
    * should surface but never crash gameplay. Default: `console.error`.
-   * Awaited `flush()` rejections propagate to the caller instead.
+   * Awaited `flush()` and `flushPending()` rejections propagate to the caller
+   * instead.
    */
   onError?: (err: unknown) => void;
 }
@@ -131,6 +151,16 @@ export function createAutoSaveScheduler<TData>(
     async flush(): Promise<void> {
       cancel();
       await flushNow();
+    },
+
+    async flushPending(): Promise<void> {
+      if (pendingTimer === null) return;
+      cancel();
+      await flushNow();
+    },
+
+    get pending(): boolean {
+      return pendingTimer !== null;
     },
 
     suppress(fn: () => void): void {
