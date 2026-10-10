@@ -272,6 +272,128 @@ void persistence.load(1);
   ) {
     throw new Error('installed third-party notice is missing sql.js MIT attribution');
   }
+  // A second consumer with no Capacitor at all (a game on another Capacitor major, or none):
+  // the autosave scheduler and the migration walker install and run without the peers.
+  const freeDirectory = path.join(scratchRoot, 'capacitor-free-consumer');
+  await mkdir(freeDirectory, { recursive: true });
+  await writeFile(
+    path.join(freeDirectory, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: 'persistence-save-capacitor-free-consumer',
+        private: true,
+        type: 'module',
+        packageManager: packageManifest.packageManager,
+        dependencies: { 'persistence-save': consumerSource },
+        devDependencies: {
+          '@types/node': devPin('@types/node'),
+          typescript: devPin('typescript'),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    path.join(freeDirectory, '.npmrc'),
+    await readFile(path.join(consumerDirectory, '.npmrc'), 'utf8'),
+  );
+  await writeFile(path.join(freeDirectory, 'pnpm-workspace.yaml'), 'packages: []\n');
+  await runChecked('pnpm', ['install', '--ignore-workspace'], { cwd: freeDirectory });
+  for (const peer of ['@capacitor/core', '@capacitor-community/sqlite', '@capacitor/preferences']) {
+    const present = await readFile(
+      path.join(freeDirectory, 'node_modules', peer, 'package.json'),
+      'utf8',
+    ).then(
+      () => true,
+      () => false,
+    );
+    if (present) throw new Error(`the Capacitor-free consumer installed ${peer}`);
+  }
+  await writeFile(
+    path.join(freeDirectory, 'free-proof.mjs'),
+    `
+import assert from 'node:assert/strict';
+import { createAutoSaveScheduler } from 'persistence-save/autosave';
+import { migrateSnapshot } from 'persistence-save/migrations';
+
+let saves = 0;
+const scheduler = createAutoSaveScheduler({ provider: () => ({ at: 1 }), save: async () => { saves += 1; } });
+await scheduler.flush();
+assert.equal(saves, 1);
+assert.equal(migrateSnapshot({ version: 1, hp: 3 }, 2, { 1: (old) => ({ ...old, version: 2 }) }).version, 2);
+console.log('capacitor-free-esm-ok');
+`,
+  );
+  await writeFile(
+    path.join(freeDirectory, 'free-proof.cjs'),
+    `
+const assert = require('node:assert/strict');
+assert.equal(typeof require('persistence-save/autosave').createAutoSaveScheduler, 'function');
+assert.equal(typeof require('persistence-save/migrations').migrateSnapshot, 'function');
+console.log('capacitor-free-cjs-ok');
+`,
+  );
+  await writeFile(
+    path.join(freeDirectory, 'free-proof.ts'),
+    `
+import { type AutoSaveScheduler, createAutoSaveScheduler } from 'persistence-save/autosave';
+import { migrateSnapshot, type VersionedSnapshot } from 'persistence-save/migrations';
+
+const scheduler: AutoSaveScheduler = createAutoSaveScheduler({ provider: () => 1, save: async () => {} });
+const saved = { version: 1 } satisfies VersionedSnapshot;
+const snapshot: Record<string, unknown> = migrateSnapshot(saved, 1, {});
+void scheduler;
+void snapshot;
+`,
+  );
+  await writeFile(
+    path.join(freeDirectory, 'tsconfig.json'),
+    `${JSON.stringify({ ...typeConfig, include: ['free-proof.ts'] }, null, 2)}\n`,
+  );
+  const freeEsm = await runChecked(process.execPath, ['free-proof.mjs'], { cwd: freeDirectory });
+  const freeCjs = await runChecked(process.execPath, ['free-proof.cjs'], { cwd: freeDirectory });
+  await runChecked('pnpm', ['exec', 'tsc', '--project', 'tsconfig.json'], { cwd: freeDirectory });
+
+  // A third consumer on another Capacitor major (6), with default peer checking: the optional
+  // peers are present at a version outside their range, so the install reports them unmet but
+  // goes ahead, and the two Capacitor-free entries still load and run.
+  const otherMajorDirectory = path.join(scratchRoot, 'other-capacitor-consumer');
+  await mkdir(otherMajorDirectory, { recursive: true });
+  await writeFile(
+    path.join(otherMajorDirectory, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: 'persistence-save-other-capacitor-consumer',
+        private: true,
+        type: 'module',
+        packageManager: packageManifest.packageManager,
+        dependencies: { 'persistence-save': consumerSource, '@capacitor/core': '6.2.1' },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    path.join(otherMajorDirectory, '.npmrc'),
+    [
+      'registry=https://registry.npmjs.org/',
+      'audit=false',
+      'fund=false',
+      'auto-install-peers=false',
+      '',
+    ].join('\n'),
+  );
+  await writeFile(path.join(otherMajorDirectory, 'pnpm-workspace.yaml'), 'packages: []\n');
+  await runChecked('pnpm', ['install', '--ignore-workspace'], { cwd: otherMajorDirectory });
+  await writeFile(
+    path.join(otherMajorDirectory, 'free-proof.mjs'),
+    await readFile(path.join(freeDirectory, 'free-proof.mjs'), 'utf8'),
+  );
+  const otherMajor = await runChecked(process.execPath, ['free-proof.mjs'], {
+    cwd: otherMajorDirectory,
+  });
+
   const installedVersions = {};
   for (const packageName of [
     '@capacitor-community/sqlite',
@@ -299,6 +421,8 @@ void persistence.load(1);
         peers: installedVersions,
         esm: esm.stdout.trim(),
         cjs: cjs.stdout.trim(),
+        capacitorFree: [freeEsm.stdout.trim(), freeCjs.stdout.trim(), 'types-ok'],
+        capacitor6: otherMajor.stdout.trim(),
         types: 'external-consumer-ok',
         wasm: ['sql-wasm.wasm', 'sql-wasm-browser.wasm'],
         installedRoot: resolvedPackageRoot,

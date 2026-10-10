@@ -48,6 +48,26 @@
         "default": "./dist/cjs/index.js"
       }
     },
+    "./autosave": {
+      "import": {
+        "types": "./dist/types/autosave.d.ts",
+        "default": "./dist/esm/autosave.js"
+      },
+      "require": {
+        "types": "./dist/cjs/autosave.d.ts",
+        "default": "./dist/cjs/autosave.js"
+      }
+    },
+    "./migrations": {
+      "import": {
+        "types": "./dist/types/migrations.d.ts",
+        "default": "./dist/esm/migrations.js"
+      },
+      "require": {
+        "types": "./dist/cjs/migrations.d.ts",
+        "default": "./dist/cjs/migrations.js"
+      }
+    },
     "./assets/sql-wasm.wasm": "./dist/assets/sql-wasm.wasm",
     "./assets/sql-wasm-browser.wasm": "./dist/assets/sql-wasm-browser.wasm",
     "./package.json": "./package.json"
@@ -82,6 +102,17 @@
     "@capacitor-community/sqlite": ">=8.1.1 <9",
     "@capacitor/core": ">=8.5.0 <9",
     "@capacitor/preferences": ">=8.0.1 <9"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor-community/sqlite": {
+      "optional": true
+    },
+    "@capacitor/core": {
+      "optional": true
+    },
+    "@capacitor/preferences": {
+      "optional": true
+    }
   },
   "dependencies": {
     "jeep-sqlite-current-sqljs": "2.9.0",

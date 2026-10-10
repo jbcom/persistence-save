@@ -29,9 +29,18 @@ over [sql.js](https://sql.js.org) and IndexedDB on the web, and native SQLite
 npm install persistence-save @capacitor/core @capacitor-community/sqlite @capacitor/preferences
 ```
 
-The three Capacitor packages are peer dependencies. The 0.2 line is verified
-against `@capacitor/core` 8.5, `@capacitor-community/sqlite` 8.1 and
-`@capacitor/preferences` 8.0. Node.js 22, 24 and 26 are supported.
+The three Capacitor packages are peer dependencies of the root entry. The 0.2
+line is verified against `@capacitor/core` 8.5, `@capacitor-community/sqlite`
+8.1 and `@capacitor/preferences` 8.0. Node.js 22, 24 and 26 are supported.
+
+The autosave scheduler and the snapshot-migration walker have their own
+entries, `persistence-save/autosave` and `persistence-save/migrations`, which
+load no Capacitor code. The Capacitor peers are optional, so a game without
+Capacitor installs `persistence-save` alone and imports those. A game on
+another Capacitor major can import them too, but an optional peer is still
+checked when it is present: the install reports the peers unmet (a warning by
+default, an error under `strict-peer-dependencies`). The root entry needs the
+8.x peers.
 
 On the web, copy both WebAssembly assets into the directory you pass as
 `wasmAssetsPath` (for example with your bundler's static-copy step):
@@ -121,6 +130,14 @@ const autosave = createAutoSaveScheduler({
 autosave.schedule(); // after a mutation; bursts coalesce into one write
 autosave.scheduleThrottled('player.health', 2_000); // per-frame callers
 addEventListener('pagehide', () => void autosave.flush());
+```
+
+The scheduler takes any `save`, so it works over your own storage too, from
+the Capacitor-free entry:
+
+```ts
+import { createAutoSaveScheduler } from 'persistence-save/autosave';
+import { migrateSnapshot } from 'persistence-save/migrations';
 ```
 
 See the [API reference](docs/API.md) for every option.
