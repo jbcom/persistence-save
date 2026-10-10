@@ -69,7 +69,7 @@ Thrown by `load()`. Has `recordId: number` and `cause: string`.
 | `provider` | `() => TData \| null` | required | The data to write, or `null` to skip (menu, mid-load). |
 | `save` | `(data: TData) => Promise<void>` | required | The write, for example `(d) => saves.save('AutoSave', d)`. |
 | `debounceMs` | `number` | `400` | Window that coalesces bursts. |
-| `onError` | `(err: unknown) => void` | `console.error` | Background save failures; awaited `flush()` failures reject instead. |
+| `onError` | `(err: unknown) => void` | `console.error` | Background save failures; awaited `flush()` and `flushPending()` failures reject instead. |
 
 The returned `AutoSaveScheduler`:
 
@@ -78,6 +78,8 @@ The returned `AutoSaveScheduler`:
 | `schedule()` | Queue a debounced save. |
 | `scheduleThrottled(key, windowMs)` | Leading-edge throttle per `key` for per-frame callers; throws on a non-positive or non-finite window. |
 | `flush()` | Save now, cancelling any pending debounce. Use on `pagehide` and in tests. |
+| `flushPending()` | Save now only if a debounced or throttled save is pending, cancelling its timer so no duplicate trails; otherwise resolve without calling `provider` or `save`. Use to wait for saves already asked for (tests, unmount) without making one. Suppression, a `null` provider and rejections behave as in `flush()`. A save whose timer has already fired is not awaited. |
+| `pending` | Read-only `boolean`: `true` while a debounced or throttled save is queued. A suppressed `schedule()` or a throttled call inside its window leaves it unchanged; `cancel()`, `flush()`, `flushPending()` and the timer firing clear it. |
 | `suppress(fn)` | Run `fn` with autosave suppressed; re-entrant. Wrap state restores. |
 | `cancel()` | Drop a pending debounced save. |
 | `resetThrottle()` | Clear every throttle window, for example on session reset. |
