@@ -1,6 +1,6 @@
 {
   "name": "persistence-save",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Save-game persistence for Capacitor games: a SQLite save/load facade (jeep-sqlite/sql.js on the web, native SQLite with SQLCipher on device), chained snapshot migrations, corrupt-save isolation, an autosave scheduler and a Preferences key-value bridge.",
   "type": "module",
   "license": "MIT",
