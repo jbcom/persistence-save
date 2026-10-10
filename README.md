@@ -35,9 +35,12 @@ line is verified against `@capacitor/core` 8.5, `@capacitor-community/sqlite`
 
 The autosave scheduler and the snapshot-migration walker have their own
 entries, `persistence-save/autosave` and `persistence-save/migrations`, which
-load no Capacitor code. A game that keeps its own storage, or is on another
-Capacitor major, can install `persistence-save` alone and import those; the
-Capacitor peers are optional for that reason.
+load no Capacitor code. The Capacitor peers are optional, so a game without
+Capacitor installs `persistence-save` alone and imports those. A game on
+another Capacitor major can import them too, but an optional peer is still
+checked when it is present: the install reports the peers unmet (a warning by
+default, an error under `strict-peer-dependencies`). The root entry needs the
+8.x peers.
 
 On the web, copy both WebAssembly assets into the directory you pass as
 `wasmAssetsPath` (for example with your bundler's static-copy step):

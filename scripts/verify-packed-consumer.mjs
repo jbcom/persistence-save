@@ -355,6 +355,45 @@ void snapshot;
   const freeCjs = await runChecked(process.execPath, ['free-proof.cjs'], { cwd: freeDirectory });
   await runChecked('pnpm', ['exec', 'tsc', '--project', 'tsconfig.json'], { cwd: freeDirectory });
 
+  // A third consumer on another Capacitor major (6), with default peer checking: the optional
+  // peers are present at a version outside their range, so the install reports them unmet but
+  // goes ahead, and the two Capacitor-free entries still load and run.
+  const otherMajorDirectory = path.join(scratchRoot, 'other-capacitor-consumer');
+  await mkdir(otherMajorDirectory, { recursive: true });
+  await writeFile(
+    path.join(otherMajorDirectory, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: 'persistence-save-other-capacitor-consumer',
+        private: true,
+        type: 'module',
+        packageManager: packageManifest.packageManager,
+        dependencies: { 'persistence-save': consumerSource, '@capacitor/core': '6.2.1' },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    path.join(otherMajorDirectory, '.npmrc'),
+    [
+      'registry=https://registry.npmjs.org/',
+      'audit=false',
+      'fund=false',
+      'auto-install-peers=false',
+      '',
+    ].join('\n'),
+  );
+  await writeFile(path.join(otherMajorDirectory, 'pnpm-workspace.yaml'), 'packages: []\n');
+  await runChecked('pnpm', ['install', '--ignore-workspace'], { cwd: otherMajorDirectory });
+  await writeFile(
+    path.join(otherMajorDirectory, 'free-proof.mjs'),
+    await readFile(path.join(freeDirectory, 'free-proof.mjs'), 'utf8'),
+  );
+  const otherMajor = await runChecked(process.execPath, ['free-proof.mjs'], {
+    cwd: otherMajorDirectory,
+  });
+
   const installedVersions = {};
   for (const packageName of [
     '@capacitor-community/sqlite',
@@ -383,6 +422,7 @@ void snapshot;
         esm: esm.stdout.trim(),
         cjs: cjs.stdout.trim(),
         capacitorFree: [freeEsm.stdout.trim(), freeCjs.stdout.trim(), 'types-ok'],
+        capacitor6: otherMajor.stdout.trim(),
         types: 'external-consumer-ok',
         wasm: ['sql-wasm.wasm', 'sql-wasm-browser.wasm'],
         installedRoot: resolvedPackageRoot,
