@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/jbcom/persistence-save/compare/v0.3.0...v0.4.0) (2026-10-10)
+
+
+### Features
+
+* **autosave:** flushPending and pending, to wait for a save without making one ([b97fe95](https://github.com/jbcom/persistence-save/commit/b97fe9540fd54be0317e6422a85dfcad69a808aa))
+* **autosave:** flushPending and pending, to wait for a save without making one ([33f690f](https://github.com/jbcom/persistence-save/commit/33f690f65270347c72bb23377e170f32d5080e7d)), closes [#12](https://github.com/jbcom/persistence-save/issues/12)
+
 ## [0.3.0](https://github.com/jbcom/persistence-save/compare/v0.2.3...v0.3.0) (2026-10-10)
 
 
