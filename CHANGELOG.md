@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/jbcom/persistence-save/compare/v0.2.3...v0.3.0) (2026-10-10)
+
+
+### Features
+
+* the autosave scheduler and migration walker load without capacitor ([cc12a6e](https://github.com/jbcom/persistence-save/commit/cc12a6e01b49a8eb44481e3fbf7c0652da221391))
+* the autosave scheduler and migration walker load without capacitor ([833beee](https://github.com/jbcom/persistence-save/commit/833beee42ecd0c2ab8913755543c1c04a00466ef))
+
+
+### Documentation
+
+* an optional peer is still checked when another capacitor major is installed ([3067f3b](https://github.com/jbcom/persistence-save/commit/3067f3be0e79a72f9a1907c5af3b95beafd73d8b))
+
 ## [0.2.3](https://github.com/jbcom/persistence-save/compare/v0.2.2...v0.2.3) (2026-10-07)
 
 
