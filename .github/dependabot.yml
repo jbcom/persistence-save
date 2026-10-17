@@ -1,5 +1,9 @@
 version: 2
 updates:
+  # One entry for the whole pnpm workspace. The lockfile lives at the root, so
+  # Dependabot must run there to cover the docs workspace member and keep
+  # pnpm-lock.yaml in step with docs/package.json. A separate /docs entry bumps
+  # docs/package.json alone and leaves the root lockfile stale.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -13,21 +17,6 @@ updates:
         update-types: [minor, patch]
     labels:
       - dependencies
-
-  - package-ecosystem: npm
-    directory: /docs
-    schedule:
-      interval: weekly
-    groups:
-      major:
-        applies-to: version-updates
-        update-types: [major]
-      non-major:
-        applies-to: version-updates
-        update-types: [minor, patch]
-    labels:
-      - dependencies
-      - docs
 
   - package-ecosystem: github-actions
     directory: /
