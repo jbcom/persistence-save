@@ -129,7 +129,7 @@
     "@playwright/test": "1.64.0",
     "@types/node": "24.19.2",
     "@types/sql.js": "1.4.11",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "5.0.4",
     "lint-staged": "17.6.0",
     "markdownlint-cli2": "0.23.3",
     "publint": "0.3.25",
@@ -137,7 +137,7 @@
     "simple-git-hooks": "2.14.0",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "vitest": "4.1.10"
+    "vitest": "5.0.4"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm exec lint-staged",
