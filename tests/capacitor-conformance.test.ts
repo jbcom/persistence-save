@@ -62,12 +62,12 @@ describe('Capacitor 8.5 conformance', () => {
         'test:consumer': 'node scripts/verify-packed-consumer.mjs',
       },
       dependencies: {
-        'jeep-sqlite-current-sqljs': '2.9.0',
+        'jeep-sqlite-current-sqljs': '2.9.2',
         'sql.js': '1.14.2',
       },
       devDependencies: {
         '@capacitor-community/sqlite': '8.1.1',
-        '@capacitor/core': '8.5.2',
+        '@capacitor/core': '8.5.3',
         '@capacitor/preferences': '8.0.1',
       },
       peerDependencies: {
@@ -77,7 +77,7 @@ describe('Capacitor 8.5 conformance', () => {
       },
     });
 
-    await expect(installedManifest('@capacitor/core')).resolves.toMatchObject({ version: '8.5.2' });
+    await expect(installedManifest('@capacitor/core')).resolves.toMatchObject({ version: '8.5.3' });
     await expect(installedManifest('@capacitor/preferences')).resolves.toMatchObject({
       version: '8.0.1',
     });
