@@ -15,6 +15,11 @@ updates:
       non-major:
         applies-to: version-updates
         update-types: [minor, patch]
+    ignore:
+      # @types/node tracks the active LTS line (24), not the newest release, so
+      # it never exposes APIs that the supported Node 22 runtime lacks.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
 
