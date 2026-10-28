@@ -116,28 +116,28 @@
   },
   "dependencies": {
     "jeep-sqlite-current-sqljs": "2.9.2",
-    "sql.js": "1.14.2"
+    "sql.js": "1.15.1"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@capacitor-community/sqlite": "8.1.1",
     "@capacitor/core": "8.5.3",
     "@capacitor/preferences": "8.0.1",
-    "@commitlint/cli": "21.2.3",
-    "@commitlint/config-conventional": "21.2.3",
-    "@playwright/test": "1.64.0",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "@types/sql.js": "1.4.11",
-    "@vitest/coverage-v8": "5.0.4",
+    "@vitest/coverage-v8": "5.0.5",
     "lint-staged": "17.6.0",
-    "markdownlint-cli2": "0.23.3",
+    "markdownlint-cli2": "0.24.0",
     "publint": "0.3.25",
     "rimraf": "6.1.3",
     "simple-git-hooks": "2.14.0",
     "typescript": "7.0.2",
-    "vite": "8.3.4",
-    "vitest": "5.0.4"
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm exec lint-staged",
