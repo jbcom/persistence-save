@@ -380,6 +380,7 @@ try {
       }),
     ),
   );
+  // All update promises above have verified durable values before realm teardown.
   await peer.reload();
   await peer.waitForFunction(() => window.__atomicPreferences);
   const atomicCounter = await peer.evaluate(() => window.__atomicPreferences.get('counter'));

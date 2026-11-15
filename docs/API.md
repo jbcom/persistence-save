@@ -136,7 +136,7 @@ return promises or perform storage operations.
 ### Atomic web updates
 
 All package `set`, `remove`, `clear` and `update` calls share an exclusive
-namespace Web Lock across same-origin tabs and workers. Failed writes or
+origin-wide Preferences mutation lock across same-origin tabs and workers. Failed writes or
 verification restore and verify the prior value before releasing the lock; if
 restoration fails, an `AggregateError` reports uncertain storage. `update`
 rejects before reading or writing when Web Locks are unavailable (including

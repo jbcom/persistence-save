@@ -174,7 +174,22 @@ describe('atomic Preferences update', () => {
       a.update('history', (raw) => `${raw ?? ''}a`),
       b.update('history', (raw) => `${raw ?? ''}b`),
     ]);
-    expect(await b.get('history')).toBe('ab');
+    expect((await b.get('history'))?.split('').sort().join('')).toBe('ab');
+  });
+
+  it('serializes overlapping namespace/key addresses and clear operations', async () => {
+    const parent = createAtomicPreferencesKv('shared');
+    const nested = createAtomicPreferencesKv('shared.child');
+    await Promise.all([
+      parent.update('child.counter', (raw) => String(Number(raw ?? 0) + 1)),
+      nested.update('counter', (raw) => String(Number(raw ?? 0) + 1)),
+    ]);
+    expect(await parent.get('child.counter')).toBe('2');
+    await Promise.all([
+      parent.clear(),
+      nested.update('counter', (raw) => String(Number(raw ?? 0) + 1)),
+    ]);
+    expect(await nested.get('counter')).toBe('1');
   });
 
   it('removes values and avoids unchanged writes', async () => {

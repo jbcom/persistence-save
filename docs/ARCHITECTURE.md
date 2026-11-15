@@ -85,7 +85,7 @@ bytes; the packed web consumer proves snapshots survive IndexedDB cold reload.
 ## Atomic Preferences boundary
 
 The ordinary Preferences factory retains its native settings backend. The
-separate atomic factory uses exclusive namespace Web Locks on web and a
+separate atomic factory uses exclusive origin-wide Preferences mutation locks on web and a
 dedicated SQLite table on native. Web reducers keep the lock through write
 verification and any verified rollback; all package preference mutations
 participate. The ordinary web setter fallback queue is only realm-local and is
