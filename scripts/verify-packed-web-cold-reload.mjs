@@ -88,8 +88,8 @@ async function stopVite() {
 }
 
 const appSource = `
-import { createPersistence, createPreferencesKv } from 'persistence-save';
-window.__atomicPreferences = createPreferencesKv('com.example.atomic-preferences');
+import { createPersistence, createAtomicPreferencesKv } from 'persistence-save';
+window.__atomicPreferences = createAtomicPreferencesKv('com.example.atomic-preferences');
 
 const dbName = 'com.example.persistence.cold-reload-v1';
 const mode = new URLSearchParams(location.search).get('mode');
