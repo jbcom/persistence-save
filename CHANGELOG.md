@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/jbcom/persistence-save/compare/v0.4.0...v0.5.0) (2026-11-15)
+
+
+### Features
+
+* preserve immutable snapshots outside save rotation ([44c8131](https://github.com/jbcom/persistence-save/commit/44c8131595e51fcc7e4db8a8f388b6d3348428bb))
+* preserve immutable snapshots outside save rotation ([9141b25](https://github.com/jbcom/persistence-save/commit/9141b257c0a11c0f83c82a8aea1c7ae2857c1a33))
+
+
+### Bug Fixes
+
+* preserve storage failures during snapshot insertion ([f879ccb](https://github.com/jbcom/persistence-save/commit/f879ccb160f3199af999b33bd6f4fa3bb8effb2f))
+
 ## [0.4.0](https://github.com/jbcom/persistence-save/compare/v0.3.0...v0.4.0) (2026-10-10)
 
 
