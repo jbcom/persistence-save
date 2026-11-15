@@ -80,3 +80,13 @@ On a failed web flush the caller receives rejection, with durability uncertain;
 the insert is never reported as successful. Its immutable in-memory row may
 remain for explicit flush recovery. Real sql.js tests export and reopen database
 bytes; the packed web consumer proves snapshots survive IndexedDB cold reload.
+
+## Atomic Preferences boundary
+
+Atomic Preferences updates use an exclusive namespace Web Lock for same-origin
+web clients. Each reducer reads fresh storage while holding the lock and keeps
+it through write verification and any verified rollback. All package preference
+mutations participate. Native Preferences update attempts fail closed because
+an origin lock cannot coordinate other native WebViews or processes. The
+ordinary setter fallback queue is only realm-local; it is not advertised as an
+atomic update. Raw or older-package writers are outside this guarantee.

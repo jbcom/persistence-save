@@ -33,6 +33,7 @@ export {
   type SnapshotListOptions,
 } from './persistence.js';
 export {
+  type AtomicPreferencesKv,
   createPreferencesKv,
   type PreferencesKv,
 } from './preferences-kv.js';

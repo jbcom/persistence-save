@@ -88,7 +88,8 @@ async function stopVite() {
 }
 
 const appSource = `
-import { createPersistence } from 'persistence-save';
+import { createPersistence, createPreferencesKv } from 'persistence-save';
+window.__atomicPreferences = createPreferencesKv('com.example.atomic-preferences');
 
 const dbName = 'com.example.persistence.cold-reload-v1';
 const mode = new URLSearchParams(location.search).get('mode');
@@ -112,6 +113,7 @@ function describeError(error) {
 
 async function main() {
   try {
+    if (mode === 'preferences') return;
     const saves = createPersistence({
       dbName,
       snapshotVersion: 1,
@@ -358,6 +360,32 @@ try {
     throw new Error(`browser console errors: ${consoleErrors.join('\n')}`);
   }
 
+  // Two independent module realms share one origin and therefore one real Web
+  // Lock manager. Concurrent increments must read the latest durable value.
+  const peer = await page.context().newPage();
+  await Promise.all([page.goto(`${url}/?mode=preferences`), peer.goto(`${url}/?mode=preferences`)]);
+  await Promise.all(
+    [page, peer].map((tab) => tab.waitForFunction(() => window.__atomicPreferences)),
+  );
+  await page.evaluate(() => window.__atomicPreferences.remove('counter'));
+  await Promise.all(
+    [page, peer].map((tab) =>
+      tab.evaluate(async () => {
+        await Promise.all(
+          Array.from({ length: 30 }, () =>
+            window.__atomicPreferences.update('counter', (raw) => String(Number(raw ?? 0) + 1)),
+          ),
+        );
+      }),
+    ),
+  );
+  await peer.reload();
+  await peer.waitForFunction(() => window.__atomicPreferences);
+  const atomicCounter = await peer.evaluate(() => window.__atomicPreferences.get('counter'));
+  if (atomicCounter !== '60')
+    throw new Error(`cross-tab atomic updates lost writes: ${atomicCounter}`);
+  await peer.close();
+
   const evidence = {
     package: `persistence-save@${packageManifest.version}`,
     tarball: archives[0],
@@ -369,6 +397,7 @@ try {
     write,
     indexedDb: stored,
     coldRead: read,
+    crossTabAtomicCounter: atomicCounter,
     workspaceLeakage: false,
   };
   const diagnosticLog = process.env.PERSISTENCE_SAVE_WEB_PROBE_LOG;

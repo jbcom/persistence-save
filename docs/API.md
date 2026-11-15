@@ -112,7 +112,7 @@ The returned `AutoSaveScheduler`:
 
 ## `createPreferencesKv(namespace)`
 
-Returns a `PreferencesKv` whose keys are stored as `<namespace>.<key>`. The
+Returns an `AtomicPreferencesKv` (also assignable to `PreferencesKv`) whose keys are stored as `<namespace>.<key>`. The
 namespace must be non-empty.
 
 | Method | Behaviour |
@@ -123,3 +123,26 @@ namespace must be non-empty.
 | `clear()` | Remove only this namespace's keys. |
 | `keys()` | This namespace's keys, prefix stripped. |
 | `getParsed(key, parse, fallback)` | Parse the value; on a read failure or a parser throw, log and return `fallback`. Never rejects. |
+
+### Atomic web updates
+
+`update(key, reduce)` calls a synchronous reducer with the latest stored string
+(or `null`), writes its string result (or removes on `null`), verifies it, and
+returns the committed value. A thrown reducer writes nothing. Failed writes or
+verification restore and verify the prior value before releasing the lock; if
+restoration fails, an `AggregateError` reports uncertain storage.
+
+All `set`, `remove`, `clear` and `update` calls from this package share an
+exclusive namespace Web Lock across same-origin tabs and workers. Do not write
+the same keys through raw Preferences, localStorage or older package versions:
+those writers do not participate. Reads and `getParsed` remain read-only and may
+observe a pending attempt before its promise resolves. A browser termination or
+storage failure can leave uncertain bytes; this is coordination, not a durable
+multi-key transaction.
+
+`update` rejects before reading or writing on native Capacitor platforms and
+when Web Locks are unavailable (including insecure web contexts). Native
+Preferences can be shared across independent WebViews or processes, which a
+JavaScript queue cannot protect. Ordinary setters retain their existing API
+and use a realm-local queue when no supported Web Lock is available. Reducers
+must not return promises or perform storage operations.

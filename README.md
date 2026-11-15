@@ -187,3 +187,10 @@ Please and published to npm with provenance.
 
 [MIT](LICENSE). The bundled sql.js WebAssembly binaries are MIT-licensed by the
 sql.js authors; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Atomic small-value web updates are available through `settings.update(key,
+reduce)`: a synchronous reducer receives the latest value under an exclusive
+namespace Web Lock. Package setters participate in the same lock. Native
+atomic updates and browsers without Web Locks reject before writing; see the
+[atomic Preferences contract](docs/API.md#atomic-web-updates) for failure and
+coordination limits.
