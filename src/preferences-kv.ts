@@ -59,11 +59,7 @@ const pending = new Map<string, Promise<unknown>>();
 function serialize<T>(namespace: string, action: () => Promise<T>, atomic = false): Promise<T> {
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
   if (!Capacitor.isNativePlatform() && locks) {
-    return locks.request(
-      `persistence-save.preferences.${namespace}`,
-      { mode: 'exclusive' },
-      action,
-    );
+    return locks.request('persistence-save.preferences', { mode: 'exclusive' }, action);
   }
   if (atomic) {
     return Promise.reject(

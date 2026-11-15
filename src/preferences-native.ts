@@ -22,14 +22,15 @@ function connection<T>(action: (db: SQLiteDBConnection) => Promise<T>): Promise<
     },
   });
   const store = database;
+  const unavailable = Symbol('unavailable');
   // One shared native connection cannot host overlapping transactions, even for
   // different namespaces. SQLite BEGIN IMMEDIATE coordinates other processes.
   const next = pending
     .catch(() => undefined)
-    .then(() => store.withConnection(action, undefined as T));
+    .then(() => store.withConnection<T | typeof unavailable>(action, unavailable));
   pending = next;
   return next.then((value) => {
-    if (value === undefined) throw new Error('Native atomic Preferences storage is unavailable.');
+    if (value === unavailable) throw new Error('Native atomic Preferences storage is unavailable.');
     return value;
   });
 }
