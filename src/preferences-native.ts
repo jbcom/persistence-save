@@ -14,7 +14,9 @@ function connection<T>(action: (db: SQLiteDBConnection) => Promise<T>): Promise<
     deserialize: () => null,
     migrations: {},
     initializeSchema: async (db) => {
-      await db.execute('PRAGMA busy_timeout = 5000;', false);
+      // This assignment returns a timeout row. Android execSQL rejects result
+      // columns, so route it through the query bridge even though it sets state.
+      await db.query('PRAGMA busy_timeout = 5000;');
       await db.execute(
         'CREATE TABLE IF NOT EXISTS atomic_preferences (key TEXT PRIMARY KEY, value TEXT);',
         false,

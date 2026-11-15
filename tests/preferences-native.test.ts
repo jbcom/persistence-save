@@ -53,6 +53,14 @@ beforeEach(async () => {
   writeGate = undefined;
   state.driver = {
     execute: async (sql: string) => {
+      // Android's SQLiteDatabase.execSQL rejects statements with result columns,
+      // including assignment PRAGMAs such as busy_timeout. Node's exec permits
+      // them, so enforce the native driver boundary before executing SQL.
+      if (sqlite.prepare(sql).columns().length > 0) {
+        throw new Error(
+          'Queries can be performed using SQLiteDatabase query or rawQuery methods only.',
+        );
+      }
       sqlite.exec(sql);
       if (sql === 'COMMIT;' && commitFailure) throw new Error('commit acknowledgement failed');
       return { changes: { changes: 0 } };

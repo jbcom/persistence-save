@@ -104,3 +104,10 @@ All atomic-key writers must adopt the atomic factory. Raw or older-package
 writers are outside this guarantee. Native readers must also adopt it to see
 migrated keys. Insecure web contexts without Web Locks fail atomic updates
 before writes rather than pretending that a realm queue coordinates tabs.
+
+The native driver harness also enforces Android's `execSQL` restriction against
+statements with result columns. The `busy_timeout` assignment returns a timeout
+row and therefore goes through `query`, while schema and transaction statements
+use `execute`. Node's SQLite `exec` alone permits the former and cannot establish
+that Android bridge compatibility. Native emulator acceptance remains a separate
+gate from this driver contract.
