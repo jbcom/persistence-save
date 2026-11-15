@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/jbcom/persistence-save/compare/v0.6.0...v0.6.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* query row-returning native busy timeout pragma ([999e33c](https://github.com/jbcom/persistence-save/commit/999e33c16d29377fe36f5933b4fea6ad17631333))
+* query row-returning native busy timeout pragma ([049edfa](https://github.com/jbcom/persistence-save/commit/049edfac25f7307d2a0b46df9a47e6cd736174bf))
+
 ## [0.6.0](https://github.com/jbcom/persistence-save/compare/v0.5.0...v0.6.0) (2026-11-15)
 
 
