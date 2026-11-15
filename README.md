@@ -187,3 +187,11 @@ Please and published to npm with provenance.
 
 [MIT](LICENSE). The bundled sql.js WebAssembly binaries are MIT-licensed by the
 sql.js authors; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+For a small value that needs atomic read-modify-write, use
+`createAtomicPreferencesKv(namespace)` and its `update(key, reduce)` method.
+A synchronous reducer receives the latest value under a Web Lock on web or a
+SQLite transaction on native. Native legacy Preferences migrate one addressed
+key at a time, without touching ordinary settings. See the
+[atomic Preferences contract](docs/API.md#createatomicpreferenceskvnamespace)
+for coordination and failure limits.

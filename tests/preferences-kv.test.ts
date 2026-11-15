@@ -1,7 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPreferencesKv } from '../src/preferences-kv.js';
+import { createAtomicPreferencesKv, createPreferencesKv } from '../src/preferences-kv.js';
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
+
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: vi.fn(() => false) } }));
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
@@ -19,10 +23,22 @@ vi.mock('@capacitor/preferences', () => ({
 describe('createPreferencesKv', () => {
   beforeEach(() => {
     store.clear();
+    const queues = new Map<string, Promise<unknown>>();
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: vi.fn((name: string, _options: unknown, action: () => Promise<unknown>) => {
+          const next = (queues.get(name) ?? Promise.resolve()).catch(() => undefined).then(action);
+          queues.set(name, next);
+          return next;
+        }),
+      },
+    });
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('rejects an empty namespace', () => {
@@ -128,5 +144,136 @@ describe('createPreferencesKv', () => {
     const kv = createPreferencesKv('com.example.game');
     const parsed = await kv.getParsed('unset', (raw) => (raw === null ? 'was-null' : raw), 'x');
     expect(parsed).toBe('was-null');
+  });
+});
+
+describe('atomic Preferences update', () => {
+  beforeEach(() => {
+    store.clear();
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    const queues = new Map<string, Promise<unknown>>();
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: vi.fn((name: string, _options: unknown, action: () => Promise<unknown>) => {
+          const next = (queues.get(name) ?? Promise.resolve()).catch(() => undefined).then(action);
+          queues.set(name, next);
+          return next;
+        }),
+      },
+    });
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('merges concurrent updates from independent handles using fresh stored values', async () => {
+    const a = createAtomicPreferencesKv('shared');
+    const b = createAtomicPreferencesKv('shared');
+    await Promise.all([
+      a.update('history', (raw) => `${raw ?? ''}a`),
+      b.update('history', (raw) => `${raw ?? ''}b`),
+    ]);
+    expect((await b.get('history'))?.split('').sort().join('')).toBe('ab');
+  });
+
+  it('serializes overlapping namespace/key addresses and clear operations', async () => {
+    const parent = createAtomicPreferencesKv('shared');
+    const nested = createAtomicPreferencesKv('shared.child');
+    await Promise.all([
+      parent.update('child.counter', (raw) => String(Number(raw ?? 0) + 1)),
+      nested.update('counter', (raw) => String(Number(raw ?? 0) + 1)),
+    ]);
+    expect(await parent.get('child.counter')).toBe('2');
+    await Promise.all([
+      parent.clear(),
+      nested.update('counter', (raw) => String(Number(raw ?? 0) + 1)),
+    ]);
+    expect(await nested.get('counter')).toBe('1');
+  });
+
+  it('removes values and avoids unchanged writes', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    await kv.set('value', 'old');
+    vi.mocked(Preferences.set).mockClear();
+    expect(await kv.update('value', (raw) => raw)).toBe('old');
+    expect(Preferences.set).not.toHaveBeenCalled();
+    expect(await kv.update('value', () => null)).toBeNull();
+    expect(await kv.get('value')).toBeNull();
+  });
+
+  it('rejects thrown and async reducers before writing', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    await expect(
+      kv.update('value', () => {
+        throw new Error('bad reducer');
+      }),
+    ).rejects.toThrow('bad reducer');
+    // TypeScript refuses this too; the runtime boundary protects JavaScript consumers.
+    // @ts-expect-error asynchronous reducers are forbidden
+    await expect(kv.update('value', async () => 'bad')).rejects.toThrow('synchronously');
+    expect(await kv.get('value')).toBeNull();
+  });
+
+  it('keeps rollback inside the lock before a queued newer writer runs', async () => {
+    const a = createAtomicPreferencesKv('shared');
+    const b = createAtomicPreferencesKv('shared');
+    await a.set('value', 'old');
+    vi.mocked(Preferences.set).mockImplementationOnce(async ({ key, value }) => {
+      store.set(key, value);
+      throw new Error('write failed after applying');
+    });
+    const failed = a.update('value', () => 'failed');
+    const newer = b.update('value', (raw) => `${raw}-new`);
+    await expect(failed).rejects.toThrow('write failed after applying');
+    await expect(newer).resolves.toBe('old-new');
+    expect(await a.get('value')).toBe('old-new');
+  });
+
+  it('verifies a dropped write and restores the prior value', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    await kv.set('value', 'old');
+    vi.mocked(Preferences.set).mockResolvedValueOnce(undefined);
+    await expect(kv.update('value', () => 'new')).rejects.toThrow('verification failed');
+    expect(await kv.get('value')).toBe('old');
+  });
+
+  it('restores an absent key after a failed verification read', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    vi.mocked(Preferences.get)
+      .mockResolvedValueOnce({ value: null })
+      .mockRejectedValueOnce(new Error('read failed'));
+    await expect(kv.update('value', () => 'new')).rejects.toThrow('read failed');
+    expect(await kv.get('value')).toBeNull();
+  });
+
+  it('reports rollback failure as uncertain storage', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    vi.mocked(Preferences.get)
+      .mockResolvedValueOnce({ value: 'old' })
+      .mockResolvedValueOnce({ value: 'wrong' })
+      .mockResolvedValueOnce({ value: 'wrong' });
+    await expect(kv.update('value', () => 'new')).rejects.toThrow('storage is uncertain');
+  });
+
+  it('rejects unsupported web atomic operations before storage access', async () => {
+    const kv = createAtomicPreferencesKv('shared');
+    vi.stubGlobal('navigator', {});
+    await expect(kv.update('value', () => 'new')).rejects.toThrow('Web Locks');
+    expect(Preferences.get).not.toHaveBeenCalled();
+    expect(Preferences.set).not.toHaveBeenCalled();
+  });
+
+  it('ordinary setters still work without navigator or Web Locks and recover after rejection', async () => {
+    vi.stubGlobal('navigator', undefined);
+    const kv = createAtomicPreferencesKv('shared');
+    vi.mocked(Preferences.set).mockRejectedValueOnce(new Error('unavailable'));
+    const bad = kv.set('value', 'bad');
+    const good = kv.set('value', 'good');
+    await expect(bad).rejects.toThrow('unavailable');
+    await good;
+    expect(await kv.get('value')).toBe('good');
+    await kv.remove('value');
+    await kv.clear();
   });
 });

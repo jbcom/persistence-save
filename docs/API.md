@@ -113,7 +113,8 @@ The returned `AutoSaveScheduler`:
 ## `createPreferencesKv(namespace)`
 
 Returns a `PreferencesKv` whose keys are stored as `<namespace>.<key>`. The
-namespace must be non-empty.
+namespace must be non-empty. Existing native Preferences values remain in
+Preferences and are not migrated by this factory.
 
 | Method | Behaviour |
 | --- | --- |
@@ -123,3 +124,49 @@ namespace must be non-empty.
 | `clear()` | Remove only this namespace's keys. |
 | `keys()` | This namespace's keys, prefix stripped. |
 | `getParsed(key, parse, fallback)` | Parse the value; on a read failure or a parser throw, log and return `fallback`. Never rejects. |
+
+## `createAtomicPreferencesKv(namespace)`
+
+Returns an `AtomicPreferencesKv`, with the ordinary KV methods plus
+`update(key, reduce)`. A synchronous reducer receives the latest stored string
+(or `null`), writes its string result (or removes on `null`), verifies it, and
+returns the committed value. A thrown reducer writes nothing. Reducers must not
+return promises or perform storage operations.
+
+### Atomic web updates
+
+All package `set`, `remove`, `clear` and `update` calls share an exclusive
+origin-wide Preferences mutation lock across same-origin tabs and workers. Failed writes or
+verification restore and verify the prior value before releasing the lock; if
+restoration fails, an `AggregateError` reports uncertain storage. `update`
+rejects before reading or writing when Web Locks are unavailable (including
+insecure web contexts). Ordinary setters use a realm-local queue as fallback.
+
+### Atomic native updates
+
+The atomic factory uses a dedicated SQLite database on native Capacitor, with
+`BEGIN IMMEDIATE` read/reduce/write/verify/commit transactions. A shared queue
+protects the connection in one JavaScript realm; SQLite's writer lock and a
+five-second busy timeout coordinate independent connections and processes.
+Failures before commit roll back. A failed commit acknowledgement can leave
+uncertain storage; a failed rollback is reported with `AggregateError`, never
+by writing compensating old values over another committed transaction.
+
+Native reads first query the atomic table, falling back to the existing
+namespaced Preferences key only if no row exists. The first write migrates only
+that addressed key. Removes and clears store NULL tombstones, so old Preferences
+values cannot reappear. Legacy Preferences are never erased or rewritten, and
+ordinary settings namespaces are untouched. Use the atomic factory for every
+reader and writer of keys that adopt this backend; the ordinary native factory
+continues reading Preferences and cannot see migrated SQLite values.
+
+### Coordination limits
+
+Do not write the same keys through raw Preferences, localStorage or older
+package versions: those writers do not participate. Reads and `getParsed`
+remain read-only and may observe a pending web attempt before its promise
+resolves. Browser termination or storage failure can leave uncertain bytes;
+the web contract is coordination, not a durable multi-key transaction. Native
+storage availability and lock-timeout errors reject rather than discarding
+history. Device integration must still be verified on the target Capacitor app;
+file-backed SQLite driver tests do not establish device acceptance.

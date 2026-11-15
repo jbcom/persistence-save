@@ -16,7 +16,9 @@
  *   "give me a parsed value or my fallback", never a rejection.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { createNativeAtomicPreferences } from './preferences-native.js';
 
 /** Namespaced string key-value store over Capacitor Preferences. */
 export interface PreferencesKv {
@@ -39,12 +41,65 @@ export interface PreferencesKv {
   getParsed<T>(key: string, parse: (raw: string | null) => T, fallback: T): Promise<T>;
 }
 
+/** A small-value store with verified, serialized read-modify-write. */
+export interface AtomicPreferencesKv extends PreferencesKv {
+  /**
+   * Transform the latest durable value under a web lock or native SQLite transaction.
+   * The reducer must be synchronous; return null to remove the key. Web updates
+   * reject without writing when Web Locks are unavailable. All readers/writers
+   * of these keys must use the atomic factory, not raw Preferences.
+   */
+  update(key: string, reduce: (current: string | null) => string | null): Promise<string | null>;
+}
+
+// Ordinary setters remain available outside secure browser contexts. Their
+// fallback queue is not an atomic-update guarantee across realms or processes.
+const pending = new Map<string, Promise<unknown>>();
+
+function serialize<T>(namespace: string, action: () => Promise<T>, atomic = false): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!Capacitor.isNativePlatform() && locks) {
+    return locks.request('persistence-save.preferences', { mode: 'exclusive' }, action);
+  }
+  if (atomic) {
+    return Promise.reject(
+      new Error('Atomic Preferences updates require web storage and the Web Locks API.'),
+    );
+  }
+  const previous = pending.get(namespace) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(action);
+  pending.set(namespace, next);
+  void next
+    .finally(() => {
+      if (pending.get(namespace) === next) pending.delete(namespace);
+    })
+    .catch(() => undefined);
+  return next;
+}
+
 /**
  * Create a namespaced KV store. Use a reverse-domain namespace (e.g.
  * `com.example.mygame`) — see the module comment on why un-namespaced Preferences
  * keys are a cross-app collision risk on Android.
  */
 export function createPreferencesKv(namespace: string): PreferencesKv {
+  return createWebPreferences(namespace);
+}
+
+/**
+ * Atomic small-value storage: Web Locks + Preferences on web; SQLite transactions
+ * on native. Native reads fall back to legacy Preferences until a key is written
+ * or tombstoned through this store. Use this factory for all writers of its keys.
+ */
+export function createAtomicPreferencesKv(namespace: string): AtomicPreferencesKv {
+  if (namespace.length === 0)
+    throw new Error('createAtomicPreferencesKv: namespace must be non-empty');
+  return Capacitor.isNativePlatform()
+    ? createNativeAtomicPreferences(namespace)
+    : createWebPreferences(namespace);
+}
+
+function createWebPreferences(namespace: string): AtomicPreferencesKv {
   if (namespace.length === 0) {
     throw new Error('createPreferencesKv: namespace must be non-empty');
   }
@@ -58,27 +113,69 @@ export function createPreferencesKv(namespace: string): PreferencesKv {
     },
 
     async set(key: string, value: string): Promise<void> {
-      await Preferences.set({ key: namespaced(key), value });
+      await serialize(namespace, () => Preferences.set({ key: namespaced(key), value }));
     },
 
     async remove(key: string): Promise<void> {
-      await Preferences.remove({ key: namespaced(key) });
+      await serialize(namespace, () => Preferences.remove({ key: namespaced(key) }));
     },
 
     async clear(): Promise<void> {
-      // Preferences.clear() would wipe EVERY namespace sharing the store;
-      // enumerate + remove only our own keys instead.
-      const { keys } = await Preferences.keys();
-      for (const key of keys) {
-        if (key.startsWith(prefix)) {
-          await Preferences.remove({ key });
+      await serialize(namespace, async () => {
+        // Preferences.clear() would wipe other namespaces sharing the store.
+        const { keys } = await Preferences.keys();
+        for (const key of keys) {
+          if (key.startsWith(prefix)) await Preferences.remove({ key });
         }
-      }
+      });
     },
 
     async keys(): Promise<string[]> {
       const { keys } = await Preferences.keys();
       return keys.filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+    },
+
+    update(key, reduce) {
+      return serialize(
+        namespace,
+        async () => {
+          const address = namespaced(key);
+          const read = async () => (await Preferences.get({ key: address })).value;
+          const write = async (value: string | null) => {
+            if (value === null) await Preferences.remove({ key: address });
+            else await Preferences.set({ key: address, value });
+          };
+          const before = await read();
+          const next = reduce(before);
+          if (next !== null && typeof next !== 'string') {
+            throw new TypeError(
+              'Atomic Preferences reducers must return a string or null synchronously.',
+            );
+          }
+          if (next === before) return before;
+          try {
+            await write(next);
+            if ((await read()) !== next)
+              throw new Error('Atomic Preferences write verification failed.');
+          } catch (error) {
+            // Keep the lock until restoration is verified. A queued newer writer
+            // cannot be overwritten by this attempt's rollback.
+            try {
+              await write(before);
+              if ((await read()) !== before)
+                throw new Error('Preferences rollback verification failed.');
+            } catch (rollbackError) {
+              throw new AggregateError(
+                [error, rollbackError],
+                'Atomic Preferences update and rollback failed; storage is uncertain.',
+              );
+            }
+            throw error;
+          }
+          return next;
+        },
+        true,
+      );
     },
 
     async getParsed<T>(key: string, parse: (raw: string | null) => T, fallback: T): Promise<T> {
