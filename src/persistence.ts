@@ -45,7 +45,7 @@ import {
 
 /** A persisted save-game record, with the snapshot already deserialized. */
 export interface SaveRecord<TState> {
-  /** Row id from the saves table. */
+  /** Row id within the ordinary-save or immutable-snapshot table. */
   id: number;
   /** The save's display name (unique — save() UPSERTs by name). */
   name: string;
@@ -57,6 +57,22 @@ export interface SaveRecord<TState> {
   snapshot: TState;
 }
 
+/** Pagination for immutable snapshots, newest row id first. */
+export interface SnapshotListOptions {
+  /** Exclusive row-id cursor from the previous page's last record. */
+  beforeId?: number;
+  /** Page size, from 1 to 500. Defaults to the store's listLimit. */
+  limit?: number;
+}
+
+/** A snapshot name already exists; its original bytes were preserved. */
+export class SnapshotExistsError extends Error {
+  constructor(public readonly snapshotName: string) {
+    super(`Snapshot already exists: ${snapshotName}`);
+    this.name = 'SnapshotExistsError';
+  }
+}
+
 /** The persistence facade interface. */
 export interface Persistence<TState> {
   /**
@@ -66,6 +82,16 @@ export interface Persistence<TState> {
    * No-op when the DB is unavailable in this environment.
    */
   save(name: string, state: TState): Promise<void>;
+  /**
+   * Insert an immutable snapshot in its own namespace. Never rotated by save()
+   * or removed by delete(). Rejects duplicate/invalid names and unavailable
+   * storage. Resolves only after the web store has flushed successfully.
+   */
+  createSnapshot(name: string, state: TState): Promise<SaveRecord<TState>>;
+  /** Load an immutable snapshot by its exact name; corruption throws. */
+  loadSnapshot(name: string): Promise<SaveRecord<TState> | null>;
+  /** Page immutable snapshots, newest id first. Corruption throws. */
+  listSnapshots(options?: SnapshotListOptions): Promise<SaveRecord<TState>[]>;
   /**
    * Load a save by row id. Returns `null` when no row exists; throws
    * {@link CorruptSaveError} when the row exists but its snapshot fails to
@@ -182,6 +208,9 @@ export interface PersistenceConfig<TState, TSnapshot extends VersionedSnapshot> 
 // connections globally, so multiple createPersistence() instances (distinct
 // dbNames) share this manager.
 let sqliteManager: SQLiteConnection | null = null;
+// Multiple facades can share a database. A late older IndexedDB export must
+// never replace a newer successful flush, so order flushes per database.
+const webFlushes = new Map<string, Promise<void>>();
 
 function isWebPlatform(): boolean {
   return Capacitor.getPlatform() === 'web';
@@ -297,7 +326,15 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
    */
   async function flushWebStore(): Promise<void> {
     if (!isWebPlatform() || !sqliteManager) return;
-    await sqliteManager.saveToStore(dbName);
+    const manager = sqliteManager;
+    const previous = webFlushes.get(dbName) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => manager.saveToStore(dbName));
+    webFlushes.set(dbName, next);
+    try {
+      await next;
+    } finally {
+      if (webFlushes.get(dbName) === next) webFlushes.delete(dbName);
+    }
   }
 
   /**
@@ -358,6 +395,15 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
             snapshot TEXT    NOT NULL
           );
         `);
+        await conn.execute(`
+          CREATE TABLE IF NOT EXISTS snapshots (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name     TEXT    NOT NULL UNIQUE,
+            seed     TEXT    NOT NULL,
+            saved_at TEXT    NOT NULL,
+            snapshot TEXT    NOT NULL
+          );
+        `);
         await initializeSchema?.(conn);
 
         db = conn;
@@ -407,69 +453,100 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
     };
   }
 
+  function encodeState(state: TState): { seed: string; savedAt: string; snapshot: string } {
+    const seed = seedPhraseOf ? seedPhraseOf(state) : '';
+    const savedAt = new Date().toISOString();
+    const serialized = serialize(state) as unknown;
+    if (!isSnapshotObject(serialized)) {
+      throw new SnapshotVersionError(
+        Number.NaN,
+        snapshotVersion,
+        'serialize must produce a snapshot object',
+      );
+    }
+    if (!Number.isSafeInteger(serialized.version)) {
+      throw new SnapshotVersionError(
+        typeof serialized.version === 'number' ? serialized.version : Number.NaN,
+        snapshotVersion,
+        'serialize must produce a safe integer version',
+      );
+    }
+    if (serialized.version !== snapshotVersion) {
+      throw new SnapshotVersionError(
+        serialized.version,
+        snapshotVersion,
+        'serialize output must equal the configured target version',
+      );
+    }
+    const snapshot = JSON.stringify(serialized);
+    if (typeof snapshot !== 'string') {
+      throw new Error('persistence: serialize output is not JSON-serializable');
+    }
+    // A hostile `toJSON()` can replace an otherwise valid object during
+    // JSON.stringify. Re-validate the exact bytes destined for SQLite.
+    const encodedSnapshot = JSON.parse(snapshot) as unknown;
+    if (!isSnapshotObject(encodedSnapshot)) {
+      throw new SnapshotVersionError(
+        Number.NaN,
+        snapshotVersion,
+        'serialized JSON must contain a snapshot object',
+      );
+    }
+    if (
+      typeof encodedSnapshot.version !== 'number' ||
+      !Number.isSafeInteger(encodedSnapshot.version) ||
+      encodedSnapshot.version !== snapshotVersion
+    ) {
+      throw new SnapshotVersionError(
+        typeof encodedSnapshot.version === 'number' ? encodedSnapshot.version : Number.NaN,
+        snapshotVersion,
+        'serialized JSON version must equal the configured target version',
+      );
+    }
+    // Write-side byte cap, symmetric with the read-side check so a state
+    // that serializes over-budget fails loudly HERE, not as a
+    // CorruptSaveError on the next load.
+    const snapshotBytes = utf8ByteLength(snapshot);
+    if (snapshotBytes > maxSnapshotBytes) {
+      throw new Error(
+        `persistence: snapshot too large to save (${snapshotBytes} > ${maxSnapshotBytes} bytes)`,
+      );
+    }
+    return { seed, savedAt, snapshot };
+  }
+
+  function snapshotName(name: string): string {
+    if (typeof name !== 'string' || name.length === 0 || name.length > MAX_NAME_LENGTH) {
+      throw new Error(
+        `persistence: snapshot name must contain 1 to ${MAX_NAME_LENGTH} UTF-16 code units`,
+      );
+    }
+    return name;
+  }
+
+  async function snapshotConnection(): Promise<SQLiteDBConnection> {
+    const conn = await openDb();
+    if (!conn) throw new Error('persistence: snapshot storage unavailable');
+    return conn;
+  }
+
+  function readSnapshotRow(row: unknown): SaveRecord<TState> {
+    try {
+      return rowToSaveRecord(row);
+    } catch (err) {
+      throw new CorruptSaveError(
+        (row as { id: number }).id,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
   return {
     async save(name: string, state: TState): Promise<void> {
       // Cap the save name; a future cloud-sync feature could
       // receive arbitrarily-long input, so truncate at the storage layer.
       const safeName = name.length > MAX_NAME_LENGTH ? name.slice(0, MAX_NAME_LENGTH) : name;
-      const seed = seedPhraseOf ? seedPhraseOf(state) : '';
-      const savedAt = new Date().toISOString();
-      const serialized = serialize(state) as unknown;
-      if (!isSnapshotObject(serialized)) {
-        throw new SnapshotVersionError(
-          Number.NaN,
-          snapshotVersion,
-          'serialize must produce a snapshot object',
-        );
-      }
-      if (!Number.isSafeInteger(serialized.version)) {
-        throw new SnapshotVersionError(
-          typeof serialized.version === 'number' ? serialized.version : Number.NaN,
-          snapshotVersion,
-          'serialize must produce a safe integer version',
-        );
-      }
-      if (serialized.version !== snapshotVersion) {
-        throw new SnapshotVersionError(
-          serialized.version,
-          snapshotVersion,
-          'serialize output must equal the configured target version',
-        );
-      }
-      const snapshot = JSON.stringify(serialized);
-      if (typeof snapshot !== 'string') {
-        throw new Error('persistence: serialize output is not JSON-serializable');
-      }
-      // A hostile `toJSON()` can replace an otherwise valid object during
-      // JSON.stringify. Re-validate the exact bytes destined for SQLite.
-      const encodedSnapshot = JSON.parse(snapshot) as unknown;
-      if (!isSnapshotObject(encodedSnapshot)) {
-        throw new SnapshotVersionError(
-          Number.NaN,
-          snapshotVersion,
-          'serialized JSON must contain a snapshot object',
-        );
-      }
-      if (
-        typeof encodedSnapshot.version !== 'number' ||
-        !Number.isSafeInteger(encodedSnapshot.version) ||
-        encodedSnapshot.version !== snapshotVersion
-      ) {
-        throw new SnapshotVersionError(
-          typeof encodedSnapshot.version === 'number' ? encodedSnapshot.version : Number.NaN,
-          snapshotVersion,
-          'serialized JSON version must equal the configured target version',
-        );
-      }
-      // Write-side byte cap, symmetric with the read-side check so a state
-      // that serializes over-budget fails loudly HERE, not as a
-      // CorruptSaveError on the next load.
-      const snapshotBytes = utf8ByteLength(snapshot);
-      if (snapshotBytes > maxSnapshotBytes) {
-        throw new Error(
-          `persistence: snapshot too large to save (${snapshotBytes} > ${maxSnapshotBytes} bytes)`,
-        );
-      }
+      const { seed, savedAt, snapshot } = encodeState(state);
       // Validation and serialization happen before openDb(): malformed
       // caller output cannot trigger schema creation or any row mutation.
       const conn = await openDb();
@@ -497,6 +574,62 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
       // Persist to IndexedDB before resolving so
       // the save survives a page reload.
       await flushWebStore();
+    },
+
+    async createSnapshot(name: string, state: TState): Promise<SaveRecord<TState>> {
+      const safeName = snapshotName(name);
+      const { seed, savedAt, snapshot } = encodeState(state);
+      const conn = await snapshotConnection();
+      try {
+        // One INSERT plus UNIQUE(name) arbitrates concurrent callers in SQLite.
+        // Never use UPSERT: a name collision must preserve the original bytes.
+        await conn.run(
+          `INSERT INTO snapshots (name, seed, saved_at, snapshot) VALUES (?, ?, ?, ?);`,
+          [safeName, seed, savedAt, snapshot],
+        );
+      } catch (err) {
+        // Classify only SQLite's exact constraint failure. A follow-up SELECT
+        // could find a concurrent winner after an unrelated disk/lock error,
+        // incorrectly masking that underlying failure as a collision.
+        const message = err instanceof Error ? err.message : String(err);
+        if (/UNIQUE constraint failed:\s*snapshots\.name\b/i.test(message)) {
+          throw new SnapshotExistsError(safeName);
+        }
+        throw err;
+      }
+      // A rejected flush leaves durability uncertain. The immutable row remains
+      // available for a later explicit flush(), but the caller must not proceed
+      // as if preservation had succeeded.
+      await flushWebStore();
+      const result = await conn.query(`SELECT * FROM snapshots WHERE name = ?;`, [safeName]);
+      const row = result.values?.[0];
+      if (!row) throw new Error('persistence: created snapshot missing');
+      return readSnapshotRow(row);
+    },
+
+    async loadSnapshot(name: string): Promise<SaveRecord<TState> | null> {
+      const safeName = snapshotName(name);
+      const conn = await snapshotConnection();
+      const result = await conn.query(`SELECT * FROM snapshots WHERE name = ?;`, [safeName]);
+      const row = result.values?.[0];
+      return row ? readSnapshotRow(row) : null;
+    },
+
+    async listSnapshots(options: SnapshotListOptions = {}): Promise<SaveRecord<TState>[]> {
+      const limit = options.limit ?? Math.max(1, Math.min(500, Math.floor(listLimit)));
+      const beforeId = options.beforeId ?? Number.MAX_SAFE_INTEGER;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+        throw new Error('persistence: snapshot page limit must be an integer from 1 to 500');
+      }
+      if (!Number.isSafeInteger(beforeId) || beforeId < 1) {
+        throw new Error('persistence: snapshot cursor must be a positive safe integer');
+      }
+      const conn = await snapshotConnection();
+      const result = await conn.query(
+        `SELECT * FROM snapshots WHERE id < ? ORDER BY id DESC LIMIT ?;`,
+        [beforeId, limit],
+      );
+      return (result.values ?? []).map(readSnapshotRow);
     },
 
     async load(id: number): Promise<SaveRecord<TState> | null> {

@@ -83,6 +83,22 @@ const record = latest ? await saves.load(latest.id) : null;
 console.log(record?.snapshot.gold); // 7
 ```
 
+### Preserving a run
+
+Before replacing an active run, preserve it under a unique immutable name:
+
+```ts
+await saves.createSnapshot('run-2026-11-14T12:30:00Z', currentState);
+const archived = await saves.loadSnapshot('run-2026-11-14T12:30:00Z');
+const page = await saves.listSnapshots({ limit: 20 });
+```
+
+Only proceed after creation resolves. These snapshots occupy a separate
+namespace, survive ordinary `maxSaves` rotation and `delete()`, and cannot be
+overwritten. Duplicate names throw `SnapshotExistsError`. Snapshot reads surface
+corruption and unavailable storage as errors. See the [API reference](docs/API.md)
+for pagination and recovery after a rejected web flush.
+
 ### Migrations
 
 Every source version, target version and migration output is a safe integer.

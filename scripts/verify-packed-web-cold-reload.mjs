@@ -100,6 +100,7 @@ const diagnostics = {
   storeOpen: null,
   userVersion: null,
   records: [],
+  snapshots: [],
   error: null,
   done: false,
 };
@@ -117,9 +118,13 @@ async function main() {
       serialize: (state) => ({ ...state, version: 1 }),
       deserialize: (snapshot) => ({ name: snapshot.name }),
       migrations: {},
+      maxSaves: 2,
     });
 
     if (mode === 'write') {
+      await saves.createSnapshot('preserved-run', { name: 'Preserved Run' });
+      for (let i = 0; i < 5; i++) await saves.save('rotating-' + i, { name: 'Rotating Run' });
+      for (const record of await saves.list()) await saves.delete(record.id);
       await saves.save('slot-one', { name: 'Player One' });
     }
 
@@ -128,6 +133,7 @@ async function main() {
       name: record.name,
       snapshot: record.snapshot,
     }));
+    diagnostics.snapshots = await saves.listSnapshots();
     diagnostics.userVersion = await saves.withConnection(
       async (connection) => {
         const result = await connection.query('PRAGMA user_version;');
@@ -223,6 +229,10 @@ try {
     throw new Error(`expected one packed tarball, found ${archives.length}`);
   }
   const archivePath = path.join(packDirectory, archives[0]);
+  const registrySource = process.env.PERSISTENCE_SAVE_CONSUMER_SOURCE;
+  if (registrySource && !/^persistence-save@\d+\.\d+\.\d+$/.test(registrySource)) {
+    throw new Error('PERSISTENCE_SAVE_CONSUMER_SOURCE must be an exact package spec');
+  }
   await writeFile(
     path.join(consumerDirectory, 'package.json'),
     `${JSON.stringify(
@@ -232,7 +242,8 @@ try {
         type: 'module',
         packageManager: packageManifest.packageManager,
         dependencies: {
-          'persistence-save': `file:${archivePath}`,
+          'persistence-save':
+            registrySource?.replace('persistence-save@', '') ?? `file:${archivePath}`,
           '@capacitor-community/sqlite': devPin('@capacitor-community/sqlite'),
           '@capacitor/core': devPin('@capacitor/core'),
           '@capacitor/preferences': devPin('@capacitor/preferences'),
@@ -296,7 +307,14 @@ try {
   viteProcess.stderr.on('data', (chunk) => viteOutput.push(String(chunk)));
   await waitForServer(url, viteOutput);
 
-  browser = await chromium.launch({ headless: false, args: ['--mute-audio'] });
+  browser = await chromium.launch({
+    headless:
+      process.env.HEAVY_RENDER_HEADLESS === '1' || process.env.HEAVY_BROWSER_HEADLESS === '1',
+    args: [
+      '--mute-audio',
+      ...(process.platform === 'darwin' ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []),
+    ],
+  });
   const page = await browser.newPage();
   const consoleErrors = [];
   page.on('console', (message) => {
@@ -326,6 +344,13 @@ try {
   ) {
     throw new Error(`cold read did not restore the saved row: ${JSON.stringify(read)}`);
   }
+  if (
+    read.snapshots.length !== 1 ||
+    read.snapshots[0]?.name !== 'preserved-run' ||
+    read.snapshots[0]?.snapshot?.name !== 'Preserved Run'
+  ) {
+    throw new Error(`cold read did not restore immutable snapshot: ${JSON.stringify(read)}`);
+  }
   if (!read.elementDefined || !read.elementPresent || read.storeOpen !== true) {
     throw new Error(`cold read jeep-sqlite was not ready: ${JSON.stringify(read)}`);
   }
@@ -336,8 +361,11 @@ try {
   const evidence = {
     package: `persistence-save@${packageManifest.version}`,
     tarball: archives[0],
-    source: 'npm-packed-tarball',
-    browser: 'chromium-headed-muted',
+    source: registrySource ?? 'npm-packed-tarball',
+    browser:
+      process.env.HEAVY_RENDER_HEADLESS === '1' || process.env.HEAVY_BROWSER_HEADLESS === '1'
+        ? 'chromium-headless-muted'
+        : 'chromium-headed-muted',
     write,
     indexedDb: stored,
     coldRead: read,

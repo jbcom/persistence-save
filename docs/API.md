@@ -24,7 +24,7 @@ Returns a `Persistence<TState>`. Synchronous; opens nothing until first use.
 | `encrypted` | `boolean` | `false` | SQLCipher on iOS and Android with a per-install key. Ignored on web. |
 | `encryptionKeyPreference` | `string` | `<dbName>.dbKey` | Preferences key for the SQLCipher passphrase; set only to keep an existing key. |
 | `seedPhraseOf` | `(state: TState) => string` | `() => ''` | Value stored in each row's `seedPhrase` column. |
-| `maxSaves` | `number` | `100` | Row cap; the oldest rows past it are pruned after each save. |
+| `maxSaves` | `number` | `100` | Ordinary-save row cap; the oldest rows past it are pruned after each save. |
 | `listLimit` | `number` | `50` | Row cap on `list()`, clamped to 1–500. |
 | `maxSnapshotBytes` | `number` | 2 MiB | Snapshot JSON cap in UTF-8 bytes, on write and on read (before parsing). |
 | `wasmAssetsPath` | `string` | `/assets` | Where the web build serves the sql.js WebAssembly. |
@@ -37,10 +37,36 @@ Returns a `Persistence<TState>`. Synchronous; opens nothing until first use.
 | `save(name, state)` | `Promise<void>` | UPSERT by name, prune past `maxSaves`, flush the web store, then resolve. Names are capped at 256 characters. |
 | `load(id)` | `Promise<SaveRecord<TState> \| null>` | `null` when no row; throws `CorruptSaveError` when the row cannot be parsed, migrated or deserialized. |
 | `list()` | `Promise<SaveRecord<TState>[]>` | Newest first, at most `listLimit`; corrupt rows are skipped and logged individually. |
-| `delete(id)` | `Promise<void>` | No-op when absent. |
+| `createSnapshot(name, state)` | `Promise<SaveRecord<TState>>` | Insert an immutable named snapshot, then flush. Reject duplicates, invalid names and unavailable storage. Never pruned by ordinary saves. |
+| `loadSnapshot(name)` | `Promise<SaveRecord<TState> \| null>` | Exact-name lookup; absence returns `null`; corruption and unavailable storage throw. |
+| `listSnapshots(options?)` | `Promise<SaveRecord<TState>[]>` | Snapshot page newest id first; corruption and unavailable storage throw. |
+| `delete(id)` | `Promise<void>` | Deletes only an ordinary save; no-op when absent. |
 | `withConnection(operation, fallback)` | `Promise<TResult>` | Runs your operation on the live connection; returns `fallback` where SQLite is unavailable. |
 | `flush()` | `Promise<void>` | Flushes writes made through `withConnection` to the web store. |
 | `close()` | `Promise<void>` | Closes the connection; later calls reopen it. |
+
+### Immutable snapshots
+
+Snapshots occupy a separate `snapshots` table and name namespace. SQLite's unique
+name constraint atomically arbitrates concurrent writers: one inserts, the rest
+throw `SnapshotExistsError` with `snapshotName`. Existing bytes never change.
+Names must contain 1–256 UTF-16 code units (JavaScript `string.length`); longer
+names reject rather than truncate.
+There is no snapshot overwrite or deletion API, and `maxSaves`, `save()` and
+`delete()` never affect snapshots. Snapshots can grow until storage is full;
+the application chooses when preservation is needed.
+
+`SnapshotListOptions` accepts `limit` (integer 1–500, default `listLimit`) and
+`beforeId` (positive safe integer, exclusive). Pass the last record's id as the
+next cursor until an empty page. Snapshot ids belong to their own table.
+
+Both save kinds use the same serializer, migrations, UTF-8 byte cap, encryption
+and connection. On web, `createSnapshot` resolves only after IndexedDB flush;
+on native, the SQLite insert commits before resolution. If flushing rejects,
+durability is uncertain and the in-memory row may still exist. Keep the active
+state intact. A retry can load the exact immutable name, verify its expected
+content, and await `flush()` before treating preservation as successful; trying
+to create that name again cannot overwrite it.
 
 ### `SaveRecord<TState>`
 
@@ -50,7 +76,7 @@ deserialized.
 
 ### `CorruptSaveError`
 
-Thrown by `load()`. Has `recordId: number` and `cause: string`.
+Thrown by `load()`, `loadSnapshot()` and `listSnapshots()`. Has `recordId: number` and `cause: string`.
 
 ## Migrations
 
