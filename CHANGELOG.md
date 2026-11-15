@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/jbcom/persistence-save/compare/v0.5.0...v0.6.0) (2026-11-15)
+
+
+### Features
+
+* add atomic key updates across web tabs and native processes ([4819a1d](https://github.com/jbcom/persistence-save/commit/4819a1dc13ab308f2d1cfddf13c9c39a2a5a7995))
+* serialize verified Preferences updates across browser tabs ([b8a29d5](https://github.com/jbcom/persistence-save/commit/b8a29d5d692ace2a8f1aaf421f3064a6a7d2e32b))
+* support atomic native keys with transactional legacy migration ([645ead8](https://github.com/jbcom/persistence-save/commit/645ead8e1771eb4db109e7cc4a4755397df3a6d5))
+
+
+### Bug Fixes
+
+* serialize overlapping preference namespaces under one web lock ([e398d40](https://github.com/jbcom/persistence-save/commit/e398d406348b82b58407eabaec94e6e7ded14d7a))
+* share web mutation lock across preference aliases ([db13e9e](https://github.com/jbcom/persistence-save/commit/db13e9e4ddd285fe352e9ba0f53eedacc41e27c0))
+
 ## [0.5.0](https://github.com/jbcom/persistence-save/compare/v0.4.0...v0.5.0) (2026-11-15)
 
 
