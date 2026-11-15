@@ -34,6 +34,7 @@ export {
 } from './persistence.js';
 export {
   type AtomicPreferencesKv,
+  createAtomicPreferencesKv,
   createPreferencesKv,
   type PreferencesKv,
 } from './preferences-kv.js';

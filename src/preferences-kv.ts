@@ -18,6 +18,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { createNativeAtomicPreferences } from './preferences-native.js';
 
 /** Namespaced string key-value store over Capacitor Preferences. */
 export interface PreferencesKv {
@@ -40,13 +41,13 @@ export interface PreferencesKv {
   getParsed<T>(key: string, parse: (raw: string | null) => T, fallback: T): Promise<T>;
 }
 
-/** A Preferences store with a verified, serialized web read-modify-write. */
+/** A small-value store with verified, serialized read-modify-write. */
 export interface AtomicPreferencesKv extends PreferencesKv {
   /**
-   * Transform the latest durable value while holding the namespace's Web Lock.
-   * The reducer must be synchronous; return null to remove the key. Rejects
-   * without writing on native platforms or when Web Locks are unavailable.
-   * All writers must use this package in the same origin, not raw Preferences.
+   * Transform the latest durable value under a web lock or native SQLite transaction.
+   * The reducer must be synchronous; return null to remove the key. Web updates
+   * reject without writing when Web Locks are unavailable. All readers/writers
+   * of these keys must use the atomic factory, not raw Preferences.
    */
   update(key: string, reduce: (current: string | null) => string | null): Promise<string | null>;
 }
@@ -85,7 +86,24 @@ function serialize<T>(namespace: string, action: () => Promise<T>, atomic = fals
  * `com.example.mygame`) — see the module comment on why un-namespaced Preferences
  * keys are a cross-app collision risk on Android.
  */
-export function createPreferencesKv(namespace: string): AtomicPreferencesKv {
+export function createPreferencesKv(namespace: string): PreferencesKv {
+  return createWebPreferences(namespace);
+}
+
+/**
+ * Atomic small-value storage: Web Locks + Preferences on web; SQLite transactions
+ * on native. Native reads fall back to legacy Preferences until a key is written
+ * or tombstoned through this store. Use this factory for all writers of its keys.
+ */
+export function createAtomicPreferencesKv(namespace: string): AtomicPreferencesKv {
+  if (namespace.length === 0)
+    throw new Error('createAtomicPreferencesKv: namespace must be non-empty');
+  return Capacitor.isNativePlatform()
+    ? createNativeAtomicPreferences(namespace)
+    : createWebPreferences(namespace);
+}
+
+function createWebPreferences(namespace: string): AtomicPreferencesKv {
   if (namespace.length === 0) {
     throw new Error('createPreferencesKv: namespace must be non-empty');
   }

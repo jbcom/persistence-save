@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPreferencesKv } from '../src/preferences-kv.js';
+import { createAtomicPreferencesKv, createPreferencesKv } from '../src/preferences-kv.js';
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
 
@@ -168,8 +168,8 @@ describe('atomic Preferences update', () => {
   });
 
   it('merges concurrent updates from independent handles using fresh stored values', async () => {
-    const a = createPreferencesKv('shared');
-    const b = createPreferencesKv('shared');
+    const a = createAtomicPreferencesKv('shared');
+    const b = createAtomicPreferencesKv('shared');
     await Promise.all([
       a.update('history', (raw) => `${raw ?? ''}a`),
       b.update('history', (raw) => `${raw ?? ''}b`),
@@ -178,7 +178,7 @@ describe('atomic Preferences update', () => {
   });
 
   it('removes values and avoids unchanged writes', async () => {
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     await kv.set('value', 'old');
     vi.mocked(Preferences.set).mockClear();
     expect(await kv.update('value', (raw) => raw)).toBe('old');
@@ -188,7 +188,7 @@ describe('atomic Preferences update', () => {
   });
 
   it('rejects thrown and async reducers before writing', async () => {
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     await expect(
       kv.update('value', () => {
         throw new Error('bad reducer');
@@ -201,8 +201,8 @@ describe('atomic Preferences update', () => {
   });
 
   it('keeps rollback inside the lock before a queued newer writer runs', async () => {
-    const a = createPreferencesKv('shared');
-    const b = createPreferencesKv('shared');
+    const a = createAtomicPreferencesKv('shared');
+    const b = createAtomicPreferencesKv('shared');
     await a.set('value', 'old');
     vi.mocked(Preferences.set).mockImplementationOnce(async ({ key, value }) => {
       store.set(key, value);
@@ -216,7 +216,7 @@ describe('atomic Preferences update', () => {
   });
 
   it('verifies a dropped write and restores the prior value', async () => {
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     await kv.set('value', 'old');
     vi.mocked(Preferences.set).mockResolvedValueOnce(undefined);
     await expect(kv.update('value', () => 'new')).rejects.toThrow('verification failed');
@@ -224,7 +224,7 @@ describe('atomic Preferences update', () => {
   });
 
   it('restores an absent key after a failed verification read', async () => {
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     vi.mocked(Preferences.get)
       .mockResolvedValueOnce({ value: null })
       .mockRejectedValueOnce(new Error('read failed'));
@@ -233,7 +233,7 @@ describe('atomic Preferences update', () => {
   });
 
   it('reports rollback failure as uncertain storage', async () => {
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     vi.mocked(Preferences.get)
       .mockResolvedValueOnce({ value: 'old' })
       .mockResolvedValueOnce({ value: 'wrong' })
@@ -241,11 +241,9 @@ describe('atomic Preferences update', () => {
     await expect(kv.update('value', () => 'new')).rejects.toThrow('storage is uncertain');
   });
 
-  it('rejects unsupported web and native atomic operations before storage access', async () => {
-    const kv = createPreferencesKv('shared');
+  it('rejects unsupported web atomic operations before storage access', async () => {
+    const kv = createAtomicPreferencesKv('shared');
     vi.stubGlobal('navigator', {});
-    await expect(kv.update('value', () => 'new')).rejects.toThrow('Web Locks');
-    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     await expect(kv.update('value', () => 'new')).rejects.toThrow('Web Locks');
     expect(Preferences.get).not.toHaveBeenCalled();
     expect(Preferences.set).not.toHaveBeenCalled();
@@ -253,7 +251,7 @@ describe('atomic Preferences update', () => {
 
   it('ordinary setters still work without navigator or Web Locks and recover after rejection', async () => {
     vi.stubGlobal('navigator', undefined);
-    const kv = createPreferencesKv('shared');
+    const kv = createAtomicPreferencesKv('shared');
     vi.mocked(Preferences.set).mockRejectedValueOnce(new Error('unavailable'));
     const bad = kv.set('value', 'bad');
     const good = kv.set('value', 'good');

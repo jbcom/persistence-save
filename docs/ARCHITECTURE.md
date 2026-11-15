@@ -10,7 +10,8 @@ description: The modules, the invariants they protect, and where the boundaries 
 | `src/persistence.ts` | The connection manager (one per store, opened lazily), the `saves` and immutable `snapshots` tables, the SQLCipher key, the web-store flush, and the save/load/list/delete facade. |
 | `src/migrations.ts` | The pure snapshot walker and `SnapshotVersionError`. No I/O. |
 | `src/autosave.ts` | The instanced autosave scheduler. No module-level state. |
-| `src/preferences-kv.ts` | The namespaced Preferences bridge. |
+| `src/preferences-kv.ts` | The namespaced Preferences bridge and web atomic coordination. |
+| `src/preferences-native.ts` | Native atomic KV transactions and addressed-key legacy read-through. |
 | `src/index.ts` | The public surface. Nothing else is exported. |
 
 `scripts/copy-wasm.mjs` copies the sql.js binaries into `dist/assets` at build
@@ -83,10 +84,23 @@ bytes; the packed web consumer proves snapshots survive IndexedDB cold reload.
 
 ## Atomic Preferences boundary
 
-Atomic Preferences updates use an exclusive namespace Web Lock for same-origin
-web clients. Each reducer reads fresh storage while holding the lock and keeps
-it through write verification and any verified rollback. All package preference
-mutations participate. Native Preferences update attempts fail closed because
-an origin lock cannot coordinate other native WebViews or processes. The
-ordinary setter fallback queue is only realm-local; it is not advertised as an
-atomic update. Raw or older-package writers are outside this guarantee.
+The ordinary Preferences factory retains its native settings backend. The
+separate atomic factory uses exclusive namespace Web Locks on web and a
+dedicated SQLite table on native. Web reducers keep the lock through write
+verification and any verified rollback; all package preference mutations
+participate. The ordinary web setter fallback queue is only realm-local and is
+not advertised as an atomic update.
+
+Native atomic keys read through to legacy Preferences until a table row exists.
+NULL tombstones cut off read-through after removal; unrelated settings are not
+migrated. A shared realm queue protects the one SQLite connection, while
+`BEGIN IMMEDIATE` holds the native database writer lock across the latest read,
+reducer, write and commit. Rollback stays inside that transaction and never
+compensates after commit. A file-backed SQLite driver harness proves migration,
+tombstones, failed-write rollback and writer exclusion against a second Node
+process; this is not a claim of device integration proof.
+
+All atomic-key writers must adopt the atomic factory. Raw or older-package
+writers are outside this guarantee. Native readers must also adopt it to see
+migrated keys. Insecure web contexts without Web Locks fail atomic updates
+before writes rather than pretending that a realm queue coordinates tabs.

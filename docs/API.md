@@ -112,8 +112,9 @@ The returned `AutoSaveScheduler`:
 
 ## `createPreferencesKv(namespace)`
 
-Returns an `AtomicPreferencesKv` (also assignable to `PreferencesKv`) whose keys are stored as `<namespace>.<key>`. The
-namespace must be non-empty.
+Returns a `PreferencesKv` whose keys are stored as `<namespace>.<key>`. The
+namespace must be non-empty. Existing native Preferences values remain in
+Preferences and are not migrated by this factory.
 
 | Method | Behaviour |
 | --- | --- |
@@ -124,25 +125,48 @@ namespace must be non-empty.
 | `keys()` | This namespace's keys, prefix stripped. |
 | `getParsed(key, parse, fallback)` | Parse the value; on a read failure or a parser throw, log and return `fallback`. Never rejects. |
 
+## `createAtomicPreferencesKv(namespace)`
+
+Returns an `AtomicPreferencesKv`, with the ordinary KV methods plus
+`update(key, reduce)`. A synchronous reducer receives the latest stored string
+(or `null`), writes its string result (or removes on `null`), verifies it, and
+returns the committed value. A thrown reducer writes nothing. Reducers must not
+return promises or perform storage operations.
+
 ### Atomic web updates
 
-`update(key, reduce)` calls a synchronous reducer with the latest stored string
-(or `null`), writes its string result (or removes on `null`), verifies it, and
-returns the committed value. A thrown reducer writes nothing. Failed writes or
+All package `set`, `remove`, `clear` and `update` calls share an exclusive
+namespace Web Lock across same-origin tabs and workers. Failed writes or
 verification restore and verify the prior value before releasing the lock; if
-restoration fails, an `AggregateError` reports uncertain storage.
+restoration fails, an `AggregateError` reports uncertain storage. `update`
+rejects before reading or writing when Web Locks are unavailable (including
+insecure web contexts). Ordinary setters use a realm-local queue as fallback.
 
-All `set`, `remove`, `clear` and `update` calls from this package share an
-exclusive namespace Web Lock across same-origin tabs and workers. Do not write
-the same keys through raw Preferences, localStorage or older package versions:
-those writers do not participate. Reads and `getParsed` remain read-only and may
-observe a pending attempt before its promise resolves. A browser termination or
-storage failure can leave uncertain bytes; this is coordination, not a durable
-multi-key transaction.
+### Atomic native updates
 
-`update` rejects before reading or writing on native Capacitor platforms and
-when Web Locks are unavailable (including insecure web contexts). Native
-Preferences can be shared across independent WebViews or processes, which a
-JavaScript queue cannot protect. Ordinary setters retain their existing API
-and use a realm-local queue when no supported Web Lock is available. Reducers
-must not return promises or perform storage operations.
+The atomic factory uses a dedicated SQLite database on native Capacitor, with
+`BEGIN IMMEDIATE` read/reduce/write/verify/commit transactions. A shared queue
+protects the connection in one JavaScript realm; SQLite's writer lock and a
+five-second busy timeout coordinate independent connections and processes.
+Failures before commit roll back. A failed commit acknowledgement can leave
+uncertain storage; a failed rollback is reported with `AggregateError`, never
+by writing compensating old values over another committed transaction.
+
+Native reads first query the atomic table, falling back to the existing
+namespaced Preferences key only if no row exists. The first write migrates only
+that addressed key. Removes and clears store NULL tombstones, so old Preferences
+values cannot reappear. Legacy Preferences are never erased or rewritten, and
+ordinary settings namespaces are untouched. Use the atomic factory for every
+reader and writer of keys that adopt this backend; the ordinary native factory
+continues reading Preferences and cannot see migrated SQLite values.
+
+### Coordination limits
+
+Do not write the same keys through raw Preferences, localStorage or older
+package versions: those writers do not participate. Reads and `getParsed`
+remain read-only and may observe a pending web attempt before its promise
+resolves. Browser termination or storage failure can leave uncertain bytes;
+the web contract is coordination, not a durable multi-key transaction. Native
+storage availability and lock-timeout errors reject rather than discarding
+history. Device integration must still be verified on the target Capacitor app;
+file-backed SQLite driver tests do not establish device acceptance.
