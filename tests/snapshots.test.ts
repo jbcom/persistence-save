@@ -9,6 +9,7 @@ const driver = vi.hoisted(() => ({
   durable: null as Uint8Array | null,
   failFlush: false,
   failOpen: false,
+  insertError: null as Error | null,
   flushes: 0,
   flushGate: null as Promise<void> | null,
 }));
@@ -46,6 +47,7 @@ function attachDatabase(db: Database) {
       database.run(sql);
     },
     run: async (sql: string, params: (string | number)[]) => {
+      if (driver.insertError && sql.includes('INSERT INTO snapshots')) throw driver.insertError;
       database.run(sql, params);
     },
     query: async (sql: string, params: (string | number)[] = []) => {
@@ -81,6 +83,7 @@ beforeEach(async () => {
   driver.durable = null;
   driver.failFlush = false;
   driver.failOpen = false;
+  driver.insertError = null;
   driver.flushes = 0;
   driver.flushGate = null;
 });
@@ -114,6 +117,22 @@ describe('immutable snapshots', () => {
     expect(loaded?.snapshot).toBe('first');
     await expect(saves.createSnapshot('same', 'third')).rejects.toBeInstanceOf(SnapshotExistsError);
     expect((await saves.loadSnapshot('same'))?.snapshot).toBe('first');
+  });
+
+  it('preserves unrelated insert errors even when the name already exists', async () => {
+    const saves = store();
+    await saves.createSnapshot('existing', 'original');
+    driver.insertError = new Error('disk full');
+    await expect(saves.createSnapshot('existing', 'replacement')).rejects.toBe(driver.insertError);
+    expect((await saves.loadSnapshot('existing'))?.snapshot).toBe('original');
+  });
+
+  it('bounds names in JavaScript UTF-16 code units without truncation', async () => {
+    const saves = store();
+    const name = '🐔'.repeat(128);
+    await saves.createSnapshot(name, 'exact name');
+    expect((await saves.loadSnapshot(name))?.name).toBe(name);
+    await expect(saves.createSnapshot('🐔'.repeat(129), 'x')).rejects.toThrow('UTF-16 code units');
   });
 
   it('rejects failed flushes and permits an explicit durable retry without overwriting', async () => {

@@ -517,7 +517,9 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
 
   function snapshotName(name: string): string {
     if (typeof name !== 'string' || name.length === 0 || name.length > MAX_NAME_LENGTH) {
-      throw new Error(`persistence: snapshot name must contain 1 to ${MAX_NAME_LENGTH} characters`);
+      throw new Error(
+        `persistence: snapshot name must contain 1 to ${MAX_NAME_LENGTH} UTF-16 code units`,
+      );
     }
     return name;
   }
@@ -586,8 +588,13 @@ export function createPersistence<TState, TSnapshot extends VersionedSnapshot>(
           [safeName, seed, savedAt, snapshot],
         );
       } catch (err) {
-        const existing = await conn.query(`SELECT * FROM snapshots WHERE name = ?;`, [safeName]);
-        if (existing.values?.length) throw new SnapshotExistsError(safeName);
+        // Classify only SQLite's exact constraint failure. A follow-up SELECT
+        // could find a concurrent winner after an unrelated disk/lock error,
+        // incorrectly masking that underlying failure as a collision.
+        const message = err instanceof Error ? err.message : String(err);
+        if (/UNIQUE constraint failed:\s*snapshots\.name\b/i.test(message)) {
+          throw new SnapshotExistsError(safeName);
+        }
         throw err;
       }
       // A rejected flush leaves durability uncertain. The immutable row remains

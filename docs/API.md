@@ -50,7 +50,8 @@ Returns a `Persistence<TState>`. Synchronous; opens nothing until first use.
 Snapshots occupy a separate `snapshots` table and name namespace. SQLite's unique
 name constraint atomically arbitrates concurrent writers: one inserts, the rest
 throw `SnapshotExistsError` with `snapshotName`. Existing bytes never change.
-Names must contain 1–256 characters; longer names reject rather than truncate.
+Names must contain 1–256 UTF-16 code units (JavaScript `string.length`); longer
+names reject rather than truncate.
 There is no snapshot overwrite or deletion API, and `maxSaves`, `save()` and
 `delete()` never affect snapshots. Snapshots can grow until storage is full;
 the application chooses when preservation is needed.
