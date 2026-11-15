@@ -155,6 +155,8 @@ assert.deepEqual(migrated, {
 assert.equal(JSON.stringify(legacy), '{"version":1,"name":"player-one","gold":7}');
 assert.equal(typeof createAutoSaveScheduler, 'function');
 assert.equal(typeof createPersistence, 'function');
+const facade = createPersistence({ dbName: 'consumer', snapshotVersion: 1, serialize: (text) => ({ version: 1, text }), deserialize: (snap) => snap.text, migrations: {} });
+for (const method of ['createSnapshot', 'loadSnapshot', 'listSnapshots']) assert.equal(typeof facade[method], 'function');
 
 const wasmAssets = ['sql-wasm.wasm', 'sql-wasm-browser.wasm'];
 for (const asset of wasmAssets) {
@@ -208,6 +210,9 @@ const config = {
 
 const persistence = createPersistence(config);
 void persistence.load(1);
+void persistence.createSnapshot('run', { name: 'Player One', gold: 7 });
+void persistence.loadSnapshot('run');
+void persistence.listSnapshots({ limit: 20, beforeId: 10 });
 `;
   const typeConfig = {
     compilerOptions: {

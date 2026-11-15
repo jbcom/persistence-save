@@ -7,7 +7,7 @@ description: The modules, the invariants they protect, and where the boundaries 
 
 | Module | Owns |
 | --- | --- |
-| `src/persistence.ts` | The connection manager (one per store, opened lazily), the `saves` table, the SQLCipher key, the web-store flush, and the save/load/list/delete facade. |
+| `src/persistence.ts` | The connection manager (one per store, opened lazily), the `saves` and immutable `snapshots` tables, the SQLCipher key, the web-store flush, and the save/load/list/delete facade. |
 | `src/migrations.ts` | The pure snapshot walker and `SnapshotVersionError`. No I/O. |
 | `src/autosave.ts` | The instanced autosave scheduler. No module-level state. |
 | `src/preferences-kv.ts` | The namespaced Preferences bridge. |
@@ -40,7 +40,7 @@ it was built to prevent.
 3. **Migrations are exact.** Pure `N → N+1` steps over a frozen clone, ending
    exactly on the target; anything else is a typed error, never a guess.
 4. **Reads never write.** Migrating a stored snapshot happens in memory; only
-   `save()` writes the current format.
+   `save()` and `createSnapshot()` write the current format.
 5. **Inputs are bounded before they are trusted.** Snapshot bytes are capped
    before `JSON.parse`, names are capped, and row counts are capped on write and
    on list.
@@ -63,3 +63,20 @@ that component (from `jeep-sqlite-current-sqljs`) on first use in a browser and
 points it at `wasmAssetsPath`. Capacitor packages are peers, so a game controls
 their versions; the sql.js and jeep-sqlite versions are pinned here because the
 WebAssembly binaries must match them exactly.
+
+## Immutable preservation boundary
+
+The `snapshots` table is separate from rotating `saves`, with a SQLite-enforced
+unique name. Creation is one parameterized INSERT, so concurrent attempts cannot
+replace a prior snapshot. The normal save cap and delete API never address this
+table. Names reject rather than truncate, and pages use exclusive row-id cursors.
+Snapshot load and list fail on corruption or unavailable storage, so a caller
+cannot mistake a failed preservation check for an empty archive.
+
+Web flushes are serialized per database across facade instances, preventing a
+late older export from replacing a newer confirmed write. A snapshot write
+resolves only after the normal platform durability boundary.
+On a failed web flush the caller receives rejection, with durability uncertain;
+the insert is never reported as successful. Its immutable in-memory row may
+remain for explicit flush recovery. Real sql.js tests export and reopen database
+bytes; the packed web consumer proves snapshots survive IndexedDB cold reload.

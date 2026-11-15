@@ -29,6 +29,8 @@ export {
   type Persistence,
   type PersistenceConfig,
   type SaveRecord,
+  SnapshotExistsError,
+  type SnapshotListOptions,
 } from './persistence.js';
 export {
   createPreferencesKv,

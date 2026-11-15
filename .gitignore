@@ -4,3 +4,5 @@ coverage/
 *.tsbuildinfo
 *.tgz
 .agent-state/
+
+.heavy-slot/
